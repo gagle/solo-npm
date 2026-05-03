@@ -1,0 +1,17 @@
+{
+  "name": "gllamas-skills",
+  "owner": { "name": "gllamas" },
+  "metadata": {
+    "description": "Claude Code skills for AI-driven solo developers shipping npm packages."
+  },
+  "plugins": [
+    {
+      "name": "solo-npm-release-skill",
+      "source": {
+        "source": "github",
+        "repo": "gagle/solo-npm-release-skill"
+      },
+      "description": "Three-phase /release skill for tag-triggered npm publishing with OIDC + provenance, plus a default /verify skill. Designed for AI-driven solo dev where PRs are disabled."
+    }
+  ]
+}
