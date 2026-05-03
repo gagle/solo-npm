@@ -129,9 +129,6 @@ example of the matrix-publish pattern.
 - [`gagle/npm-trust/blob/main/docs/bootstrap.md`](https://github.com/gagle/npm-trust/blob/main/docs/bootstrap.md)
   — the multi-repo architecture vision (release skill, verify skill,
   future bootstrap CLI, why this works for AI-driven solo dev).
-- [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills)
-  — the canonical example of a Claude Code marketplace plugin (this
-  repo's structure is modeled on it).
 
 ## Contributing
 
