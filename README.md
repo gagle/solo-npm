@@ -123,20 +123,8 @@ registry verification.
 See [`gagle/ncbijs`](https://github.com/gagle/ncbijs) as a working
 example of the matrix-publish pattern.
 
-## Related
-
-- [`gagle/npm-trust`](https://github.com/gagle/npm-trust) — OIDC trust
-  setup, doctor, and the `setup-npm-trust` skill.
-- [`gagle/npm-trust/blob/main/docs/bootstrap.md`](https://github.com/gagle/npm-trust/blob/main/docs/bootstrap.md)
-  — the multi-repo architecture vision (release skill, verify skill,
-  future bootstrap CLI, why this works for AI-driven solo dev).
-
 ## Contributing
 
 This project follows an AI-only contribution model — see
 [`CONTRIBUTING.md`](./CONTRIBUTING.md). PRs are disabled. Open an issue
 or discussion for change requests.
-
-## License
-
-MIT.
