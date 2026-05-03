@@ -284,10 +284,18 @@ yet, so the workflow won't run.
 >   what makes that true.
 
 After pushing the commit at C.3 and confirming local `/verify` at C.4,
-wait for the most recent `ci.yml` run on `main` to complete green:
+wait for `ci.yml` on the **just-pushed commit** to complete green
+(commit-specific lookup, robust against races with concurrent pushes):
 
 ```bash
-RUN_ID=$(gh run list --workflow=ci.yml --branch=main --limit=1 --json databaseId --jq '.[0].databaseId')
+COMMIT_SHA=$(git rev-parse HEAD)
+# Wait briefly for GitHub Actions to register the run
+for _ in 1 2 3 4 5; do
+  RUN_ID=$(gh run list --commit "$COMMIT_SHA" --workflow=ci.yml \
+           --json databaseId --jq '.[0].databaseId')
+  [ -n "$RUN_ID" ] && break
+  sleep 5
+done
 gh run watch "$RUN_ID" --exit-status
 ```
 
