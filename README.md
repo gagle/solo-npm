@@ -1,7 +1,6 @@
 # release-solo-npm
 
-> Tag-triggered npm releases with one approval, for AI-driven solo dev
-> where PRs are disabled.
+> Tag-triggered npm releases with one approval, for AI-driven solo dev.
 
 ## The problem
 

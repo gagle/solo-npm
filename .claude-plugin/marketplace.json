@@ -11,7 +11,7 @@
         "source": "github",
         "repo": "gagle/release-solo-npm"
       },
-      "description": "Three-phase /release-solo-npm skill for tag-triggered npm publishing with OIDC + provenance, plus a default /verify-solo-npm skill. Designed for AI-driven solo dev where PRs are disabled."
+      "description": "Three-phase /release-solo-npm skill for tag-triggered npm publishing with OIDC + provenance, plus a default /verify-solo-npm skill. Designed for AI-driven solo dev."
     }
   ]
 }
