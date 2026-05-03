@@ -1,4 +1,4 @@
-# Installing solo-npm-release-skill
+# Installing release-solo-npm
 
 Step-by-step install + customization guide.
 
@@ -7,19 +7,20 @@ Step-by-step install + customization guide.
 In Claude Code:
 
 ```
-/plugin marketplace add gagle/solo-npm-release-skill
-/plugin install solo-npm-release-skill@gllamas-skills
+/plugin marketplace add gagle/release-solo-npm
+/plugin install release-solo-npm@gllamas-skills
 ```
 
 This installs two skills into your repo's `.claude/skills/`:
 
-- `release/SKILL.md` — the canonical `/release` skill
-- `verify/SKILL.md` — a default `/verify` skill
+- `release-solo-npm/SKILL.md` — the canonical `/release-solo-npm` skill
+- `verify-solo-npm/SKILL.md` — a default `/verify-solo-npm` skill
 
-## 2. Edit the placeholders in `release/SKILL.md`
+## 2. Edit the placeholders in `release-solo-npm/SKILL.md`
 
-Open `.claude/skills/release/SKILL.md` and find the **Placeholders**
-table near the top. Replace each placeholder throughout the file:
+Open `.claude/skills/release-solo-npm/SKILL.md` and find the
+**Placeholders** table near the top. Replace each placeholder
+throughout the file:
 
 | Placeholder | What to put |
 |---|---|
@@ -35,11 +36,11 @@ If your repo is a **monorepo**, keep the monorepo block and replace
 `<MAIN_PACKAGE_DIR>` with the path to the package whose version is
 canonical (e.g., `packages/core`).
 
-## 3. Customize `verify/SKILL.md` if needed
+## 3. Customize `verify-solo-npm/SKILL.md` if needed
 
-The default `/verify` skill runs lint + test + build. Edit
-`.claude/skills/verify/SKILL.md` to add anything else your stack
-needs:
+The default `/verify-solo-npm` skill runs lint + test + build. Edit
+`.claude/skills/verify-solo-npm/SKILL.md` to add anything else your
+stack needs:
 
 - `pnpm test:e2e` for e2e tests
 - `pnpm typecheck` if separate from lint
@@ -66,7 +67,7 @@ Make sure you have:
 In Claude Code, type:
 
 ```
-/release
+/release-solo-npm
 ```
 
 The skill walks through:

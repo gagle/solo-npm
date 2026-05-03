@@ -1,13 +1,13 @@
 ---
-name: release
+name: release-solo-npm
 description: >
   Designed for AI-driven solo dev where PRs are disabled. Tag-triggered
   npm release with OIDC provenance and ONE human approval — that's the
   only place a human is in the loop, and it's a structured selector,
   not a free-text prompt. Three phases: pre-flight (silent if green),
   plan (one AskUserQuestion), execute (silent through verification).
-  Composes with /verify. Supports pre-release versions, public + custom
-  registries, single-package + monorepo.
+  Composes with /verify-solo-npm-solo-npm. Supports pre-release versions, public
+  + custom registries, single-package + monorepo.
 ---
 
 # Release
@@ -26,7 +26,7 @@ review code, no second pair of human eyes. You want releases that are:
 
 This skill drives the whole flow end-to-end with **one** human
 checkpoint (a structured `AskUserQuestion` selector — unmissable,
-unmistakable). Type `/release`, review the plan once, click `Proceed`,
+unmistakable). Type `/release-solo-npm`, review the plan once, click `Proceed`,
 get a notification when the tarball is on npm with provenance.
 
 ## How it works
@@ -52,9 +52,9 @@ in your repo's specifics:
 | `<RELEASE_WORKFLOW>` | `release.yml` | doctor's `--workflow` filter |
 | `<MAIN_PACKAGE_DIR>` | `packages/core` | (Monorepo) where the canonical version lives |
 | Monorepo block | (delete if single-package) | iterate `packages/*` |
-| `<LINT_CMD>` | `pnpm run lint` | fallback when `/verify` skill not installed |
-| `<TEST_CMD>` | `pnpm test` | fallback when `/verify` skill not installed |
-| `<BUILD_CMD>` | `pnpm run build` | fallback when `/verify` skill not installed |
+| `<LINT_CMD>` | `pnpm run lint` | fallback when `/verify-solo-npm` skill not installed |
+| `<TEST_CMD>` | `pnpm test` | fallback when `/verify-solo-npm` skill not installed |
+| `<BUILD_CMD>` | `pnpm run build` | fallback when `/verify-solo-npm` skill not installed |
 
 ## Phase A — Pre-flight
 
@@ -67,9 +67,9 @@ git status --porcelain
 If non-empty, **STOP**. Tell the user to commit or stash first. Do not
 proceed.
 
-### A.2 Run /verify
+### A.2 Run /verify-solo-npm
 
-Invoke the `/verify` skill. (If `/verify` is not installed, fall back
+Invoke the `/verify-solo-npm` skill. (If `/verify-solo-npm` is not installed, fall back
 to running `<LINT_CMD> && <TEST_CMD> && <BUILD_CMD>` inline.)
 
 If verification fails, **STOP** and surface the error.
@@ -262,7 +262,7 @@ git push
 
 ### C.4 Final pre-tag verification
 
-Re-invoke `/verify` against the bumped state. Aborts here are rare but
+Re-invoke `/verify-solo-npm` against the bumped state. Aborts here are rare but
 not hypothetical (e.g., a test that depends on `package.json#version`).
 
 If anything fails, **STOP**. Recovery: fix the issue, restart from
@@ -283,7 +283,7 @@ yet, so the workflow won't run.
 > - Your defense-in-depth model says "tag means CI green" — this is
 >   what makes that true.
 
-After pushing the commit at C.3 and confirming local `/verify` at C.4,
+After pushing the commit at C.3 and confirming local `/verify-solo-npm` at C.4,
 wait for `ci.yml` on the **just-pushed commit** to complete green
 (commit-specific lookup, robust against races with concurrent pushes):
 
@@ -375,7 +375,7 @@ End the skill.
 | Failure | Where | Recovery |
 |---|---|---|
 | Working tree dirty | A.1 | User commits or stashes; restart from A.1 |
-| `/verify` fails | A.2, C.4 | Fix the issue; restart from A.1 |
+| `/verify-solo-npm` fails | A.2, C.4 | Fix the issue; restart from A.1 |
 | Doctor `summary.fail > 0` | A.3 | Fix the underlying environment issue (e.g., upgrade Node); restart |
 | Network failure on doctor | A.3 | Retry after restoring network; restart from A.1 |
 | User says `Abort` | B.5 | No state changes; end |

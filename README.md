@@ -1,4 +1,4 @@
-# solo-npm-release-skill
+# release-solo-npm
 
 > Tag-triggered npm releases with one approval, for AI-driven solo dev
 > where PRs are disabled.
@@ -28,12 +28,12 @@ A Claude Code skill that drives the entire release end-to-end:
 
 | Phase | What happens | Human input |
 |---|---|---|
-| **A. Pre-flight** | `/verify` (lint + test + build) → `npm-trust --doctor` | none (silent if green) |
+| **A. Pre-flight** | `/verify-solo-npm` (lint + test + build) → `npm-trust --doctor` | none (silent if green) |
 | **B. Plan** | Detect bump, render summary, **one** `AskUserQuestion` selector | one click: Proceed / Override / Edit changelog / Abort |
 | **C. Execute** | Bump → commit → push → tag → watch CI → verify on registry | none |
 
-Type `/release`. Review the plan once. Click `Proceed`. Get a
-notification when the tarball is on npm with provenance. That's it.
+Type `/release-solo-npm`. Review the plan once. Click `Proceed`. Get
+a notification when the tarball is on npm with provenance. That's it.
 
 ## Why this works for solo / agent-driven dev
 
@@ -41,19 +41,21 @@ notification when the tarball is on npm with provenance. That's it.
   agent ran locally; SLSA provenance proves what was published.
 - **One structured approval gate.** Not a free-text "yes/no" prompt
   (those are easy to miss). A clearly-labeled selector — unmissable.
-- **Composable.** `/verify` is its own skill. Customize it (add e2e,
-  coverage thresholds, license audits) without touching `/release`.
+- **Composable.** `/verify-solo-npm` is its own skill. Customize it
+  (add e2e, coverage thresholds, license audits) without touching
+  `/release-solo-npm`.
 - **No special cases.** Every release follows the same path. The
   "small fix" and "big feature" both go through Phase A → B → C.
 
 ## Install
 
 ```
-/plugin marketplace add gagle/solo-npm-release-skill
-/plugin install solo-npm-release-skill@gllamas-skills
+/plugin marketplace add gagle/release-solo-npm
+/plugin install release-solo-npm@gllamas-skills
 ```
 
-This installs both `/release` and `/verify` skills into Claude Code.
+This installs both `/release-solo-npm` and `/verify-solo-npm` skills
+into Claude Code.
 
 ## Prerequisites
 
@@ -68,8 +70,8 @@ This installs both `/release` and `/verify` skills into Claude Code.
 
 ## Configuration
 
-After install, edit `.claude/skills/release/SKILL.md` to fill in the
-placeholders for your repo:
+After install, edit `.claude/skills/release-solo-npm/SKILL.md` to fill
+in the placeholders for your repo:
 
 | Placeholder | Example | What it controls |
 |---|---|---|
@@ -77,10 +79,10 @@ placeholders for your repo:
 | `<REPO_SLUG>` | `gagle/rfc-bcp47` | compare URLs in CHANGELOG |
 | `<RELEASE_WORKFLOW>` | `release.yml` | doctor's `--workflow` filter |
 | Monorepo block | (delete if single-package) | iterate `packages/*` |
-| `<LINT_CMD>`, `<TEST_CMD>`, `<BUILD_CMD>` | `pnpm run lint`, `pnpm test`, `pnpm run build` | Fallbacks if `/verify` isn't installed |
+| `<LINT_CMD>`, `<TEST_CMD>`, `<BUILD_CMD>` | `pnpm run lint`, `pnpm test`, `pnpm run build` | Fallbacks if `/verify-solo-npm` isn't installed |
 
-Customize `.claude/skills/verify/SKILL.md` for your stack — add e2e,
-coverage gates, typecheck, whatever.
+Customize `.claude/skills/verify-solo-npm/SKILL.md` for your stack —
+add e2e, coverage gates, typecheck, whatever.
 
 ## Pre-release versions
 
@@ -112,9 +114,10 @@ Note: do NOT include `"provenance": true` for custom registries.
 
 ## Monorepos
 
-The bundled `release/SKILL.md` ships with a monorepo block. Single-package
-repos delete it after install. Monorepos keep it; Phase C iterates
-`packages/*` for the version bump and per-package registry verification.
+The bundled `release-solo-npm/SKILL.md` ships with a monorepo block.
+Single-package repos delete it after install. Monorepos keep it;
+Phase C iterates `packages/*` for the version bump and per-package
+registry verification.
 
 See [`gagle/ncbijs`](https://github.com/gagle/ncbijs) as a working
 example of the matrix-publish pattern.

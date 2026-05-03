@@ -1,16 +1,16 @@
 {
-  "name": "solo-npm-release-skill",
-  "version": "0.1.0",
-  "description": "Three-phase /release skill for tag-triggered npm publishing with OIDC + provenance, plus a default /verify skill. Designed for AI-driven solo dev where PRs are disabled.",
+  "name": "release-solo-npm",
+  "version": "0.2.0",
+  "description": "Three-phase /release-solo-npm skill for tag-triggered npm publishing with OIDC + provenance, plus a default /verify-solo-npm skill. Designed for AI-driven solo dev where PRs are disabled.",
   "license": "MIT",
   "author": "Gabriel Llamas",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gagle/solo-npm-release-skill"
+    "url": "https://github.com/gagle/release-solo-npm"
   },
-  "homepage": "https://github.com/gagle/solo-npm-release-skill#readme",
+  "homepage": "https://github.com/gagle/release-solo-npm#readme",
   "bugs": {
-    "url": "https://github.com/gagle/solo-npm-release-skill/issues"
+    "url": "https://github.com/gagle/release-solo-npm/issues"
   },
   "keywords": [
     "claude-code",
