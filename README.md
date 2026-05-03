@@ -1,6 +1,8 @@
-# release-solo-npm
+<h1 align="center">release-solo-npm</h1>
 
-> Tag-triggered npm releases with one approval, for AI-driven solo dev.
+<p align="center">
+  Tag-triggered npm releases with one approval, for AI-driven solo dev.
+</p>
 
 ## The problem
 
