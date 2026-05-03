@@ -123,6 +123,28 @@ registry verification.
 See [`gagle/ncbijs`](https://github.com/gagle/ncbijs) as a working
 example of the matrix-publish pattern.
 
+### Publishing from `dist/` with `gagle/prepare-dist@v1`
+
+Monorepos that publish from `<package>/dist/` (rather than from
+`<package>/`) commonly pair with the
+[`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist)
+GitHub Action — it cleans up `<dist>/package.json` (strips `dist/`
+prefix from paths, drops dev fields like `scripts` /
+`devDependencies` / `files`, copies `README.md` and `LICENSE` into
+`dist/`) and verifies that `package.json#version` matches the pushed
+tag. The two layers compose cleanly:
+
+| Layer | Owner |
+|---|---|
+| Bump source `package.json#version` | this skill (Phase C.1) |
+| Tag + push tag | this skill (Phase C.5) |
+| Translate source `package.json` → `dist/package.json` | `prepare-dist` action in `release.yml` |
+| `npm publish` from `<package>/dist/` | `release.yml` publish step |
+| Registry verify | this skill (Phase C.7) |
+
+See [`gagle/ncbijs`'s `release.yml`](https://github.com/gagle/ncbijs/blob/main/.github/workflows/release.yml)
+for the full pattern.
+
 ## Contributing
 
 This project follows an AI-only contribution model — see
