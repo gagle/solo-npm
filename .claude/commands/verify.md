@@ -1,5 +1,5 @@
 ---
-description: Generic opinionated baseline for running lint + typecheck + test + build with auto-detected commands. Halts on first failure. Wrap via .claude/skills/verify/SKILL.md for repo-specific commands (e2e, coverage, nx run-many).
+description: Run quality gates — lint + typecheck + test + build with auto-detected commands. Triggers from prompts like "verify", "run the gates", "did I break anything", "did tests pass", "make sure everything passes", "quick sanity check before commit". Halts on first failure. Wrap via .claude/skills/verify/SKILL.md for repo-specific commands (e2e, coverage, nx run-many).
 ---
 
 # Verify

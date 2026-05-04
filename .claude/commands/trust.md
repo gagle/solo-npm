@@ -1,5 +1,5 @@
 ---
-description: Configure npm OIDC Trusted Publishing across the repo's packages — interactive wizard via the npm-trust CLI. Use on first OIDC setup or when adding new packages.
+description: Configure npm OIDC Trusted Publishing across the repo's packages — interactive wizard via the npm-trust CLI. Triggers from prompts like "configure OIDC trust", "set up Trusted Publishing", "fix CI publish failure (missing trust)", "add trust config for @scope/newpackage". Walks the user through any required manual steps (npm login, web 2FA). Use on first OIDC setup or when adding new packages.
 ---
 
 # Trust

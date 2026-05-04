@@ -1,5 +1,84 @@
 # Changelog
 
+## v0.5.4 — Universal /release entry; pre-release + hotfix as 1st-class skills; agent-skills composition
+
+Major restructure of the release lifecycle. Two new skills (8th and 9th), a friction-minimisation pass on `/release`, dist-tag-aware publish for the workflow templates, and explicit composition with `addyosmani/agent-skills` for development work.
+
+### `/release` simplified + universal entry
+
+- **B.5 prompt simplified** to two options: `Proceed with v{NEXT} / Abort`. Dropped `Override version` (use prompt context — say "release v0.5.4" and the skill picks it up) and `Edit changelog` (follow up with a `docs(changelog):` commit if needed). Pre-release branch removed (now lives in `/solo-npm:prerelease`).
+- **First-release flow skips B.5 entirely.** B.1's "First release" pick is the only prompt; changelog renders as visible chat output; Phase C executes directly. Drops first-release from 2 clicks to 1.
+- **Auto-chains to `/solo-npm:prerelease`** when `package.json#version` is pre-release-shape. The user types `/release`; skill resolves to the right flow without redirect messages.
+- **New Phase 0 prompt-context extraction**: if the user's prompt names a specific version ("release v0.5.4"), pre-fill `NEXT_VERSION`. If auto-bump differs, B.5 surfaces both as a 3-way choice.
+- **New Phase A.5 cache-aware audit check**: reads `.solo-npm/state.json#audit`; STOPs if `tier1Count > 0` with directive to fix via `/solo-npm:deps`. Zero-latency on the common path.
+
+### New skill: `/solo-npm:prerelease` (8th)
+
+First-class command for the pre-release lifecycle:
+
+- **START a line** (current version is stable): asks for identifier (alpha/beta/rc) + base bump (patch/minor/major). Phase 0 pre-fills from prompt ("start a beta for v2" → identifier=beta, base=major; both questions skipped). Agent edits package.json to `<bumped>-<id>.0`, commits, tags, publishes to `@next` dist-tag.
+- **BUMP counter** (current version is pre-release): one click to `1.1.0-beta.1` → `1.1.0-beta.2`.
+- **PROMOTE to stable** (current version is pre-release): one click to `1.1.0-beta.n` → `1.1.0`. Publishes to `@latest`.
+
+User never opens `package.json`, never runs `npm version`, never touches the version string. AskUserQuestion gates with structured options; agent handles all code edits.
+
+### New skill: `/solo-npm:hotfix` (9th)
+
+First-class command for backward maintenance hotfixes on a `<major>.x` branch:
+
+- **Phase 0 prompt-context extraction**: "Hotfix the v1 rate limiter — it crashes on 429" pre-fills target major (`1`) and fix description (`rate limiter crashes on 429`); both questions skipped.
+- **Phase B branch management**: agent creates `<major>.x` branch from the most recent `v<major>.*` tag (first hotfix) or checks out + pulls (subsequent hotfixes). Pushes the branch upstream automatically.
+- **Phase C dynamic dist-tag**: `@latest` if the maintenance major is still the current stable line; `@v<major>` (legacy tag) if a newer major has already shipped. Sets `package.json#publishConfig.tag` accordingly so the registry doesn't get clobbered.
+- **Phase D composition with agent-skills**: when `addyosmani/agent-skills` is installed, the actual code fix delegates to `/agent-skills:debugging-and-error-recovery` (reproduce → localise → reduce → fix → guard methodology). Falls back to general agent code-editing if not installed.
+- **Phase F return to main**: after the patch ships, agent switches back. Maintenance branch persists on origin for future hotfixes.
+
+### `release.yml` template gains dist-tag awareness
+
+`init.md` scaffolds `release.yml` with a 3-layer dist-tag detection step: explicit `package.json#publishConfig.tag` (highest, used by hotfix on legacy lines) → version-shape (`*-id.n` → `next`) → default `latest`. Single primitive supports stable releases, pre-releases, and hotfixes correctly without per-skill workflow files.
+
+### `.solo-npm/state.json` cache schema extended
+
+`audit` section added alongside `trust`:
+
+```json
+{
+  "version": 1,
+  "trust": { "configured": [...], "lastFullCheck": "...", "ttlDays": 7 },
+  "audit": { "tier1Count": 0, "tier2Count": 0, "lastFullScan": "...", "ttlDays": 1 }
+}
+```
+
+`/release` Phase A.5 reads `audit`; `/solo-npm:audit` Phase 6 writes it; `/solo-npm:deps` Phase 7 updates it after fixing tier-1 advisories. `/solo-npm:status` reads it for the dashboard.
+
+### Composition with `addyosmani/agent-skills`
+
+solo-npm's scope is **release infrastructure + publishing lifecycle**. Development work (writing code, debugging, code review) is delegated to `addyosmani/agent-skills` when installed:
+
+- `/solo-npm:hotfix` Phase D → `/agent-skills:debugging-and-error-recovery` for the bug fix.
+- `/solo-npm:deps` verify-failure handler → `/agent-skills:debugging-and-error-recovery` to triage broken upgrades.
+
+solo-npm works standalone; agent-skills composition is opt-in. Recommended setup: install both. README's new "Scope and partners" section documents the boundary.
+
+### Friction-minimisation: prompt-context extraction
+
+Four skills (release, prerelease, hotfix, deps) now read the user's invoking prompt for hints (version numbers, identifiers, fix descriptions, target majors, dep names, risk-tolerance phrases) and pre-fill subsequent questions. *"Start a beta for v2"* skips both START questions in prerelease. *"Update what's safe"* skips the tier prompt in deps. *"Hotfix the v1 rate limiter"* skips both hotfix prompts. Bare invocations still ask everything.
+
+### Description tuning
+
+All 9 commands' frontmatter `description` fields tuned for natural-language matching — common verbs ("ship", "cut", "ship a beta", "patch the previous major") added to improve Claude's auto-invocation.
+
+### Other changes
+
+- `init.md` scaffolds `.solo-npm/state.json` with new `audit` section.
+- New "Diagnostic prompts" section in README covers symptom-based prompts ("why is my CI failing?") and how Claude routes them.
+- `marketplace.json` and `plugin.json` descriptions updated to mention 9 commands and the agent-skills composition.
+
+### Migration
+
+No consumer changes needed. Existing `release.yml` files in consumer repos lack the dist-tag detection step but only matter if/when the consumer first invokes `/solo-npm:prerelease` or `/solo-npm:hotfix` — the pre-flight checks surface a clear stop with the remedy ("run `/solo-npm:init` to refresh `release.yml`").
+
+If you previously had `package.json#scripts.npm-trust:setup`, it was already removed in v0.5.3. No re-removal needed.
+
 ## v0.5.3 — Auto-chain on trust gap; foolproof manual handoffs; trust-state cache
 
 Three coordinated changes that codify the "skills are operators, not

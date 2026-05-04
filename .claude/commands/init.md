@@ -149,6 +149,8 @@ If missing, write `24\n`. Otherwise leave alone.
 
 If missing, pick template based on the registry kind decision in 1b.
 
+Both templates include a **dist-tag detection step** before publish so pre-releases land on `@next`, hotfixes on legacy majors land on `@v<major>`, and stable releases land on `@latest`. Three-layer rule: explicit `package.json#publishConfig.tag` (highest priority — set by `/solo-npm:hotfix` on legacy maintenance branches) → version-shape (`*-id.n` → `next`) → default `latest`.
+
 **Public template** (OIDC + provenance):
 
 ```yaml
@@ -177,7 +179,19 @@ jobs:
       - run: pnpm run lint
       - run: pnpm test
       - run: pnpm run build
-      - run: pnpm publish --no-git-checks
+      - name: Detect dist-tag
+        id: dist
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          EXPLICIT_TAG=$(node -p "require('./package.json').publishConfig?.tag || ''")
+          if [ -n "$EXPLICIT_TAG" ]; then
+            echo "tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ -[a-z]+\.[0-9]+$ ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+      - run: pnpm publish --no-git-checks --tag ${{ steps.dist.outputs.tag }}
 ```
 
 **Private template** (token auth, no provenance):
@@ -209,7 +223,19 @@ jobs:
       - run: pnpm run lint
       - run: pnpm test
       - run: pnpm run build
-      - run: pnpm publish --no-git-checks
+      - name: Detect dist-tag
+        id: dist
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          EXPLICIT_TAG=$(node -p "require('./package.json').publishConfig?.tag || ''")
+          if [ -n "$EXPLICIT_TAG" ]; then
+            echo "tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ -[a-z]+\.[0-9]+$ ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+      - run: pnpm publish --no-git-checks --tag ${{ steps.dist.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
@@ -353,7 +379,7 @@ If existing, **merge keys** — add `extraKnownMarketplaces.gllamas-skills`
 and `enabledPlugins["solo-npm@gllamas-skills"]: true` if not already
 present. Preserve any other keys in the file.
 
-#### `.solo-npm/state.json` — trust-state cache
+#### `.solo-npm/state.json` — trust + audit state cache
 
 If missing, create with an empty cache:
 
@@ -364,15 +390,24 @@ If missing, create with an empty cache:
     "configured": [],
     "lastFullCheck": null,
     "ttlDays": 7
+  },
+  "audit": {
+    "tier1Count": 0,
+    "tier2Count": 0,
+    "lastFullScan": null,
+    "ttlDays": 1
   }
 }
 ```
 
-This file is the per-repo trust-state cache used by `/solo-npm:release`
-Phase A.3 to skip per-package re-checks on every release. The first
-`/release` after init populates it via the cold-path doctor. Subsequent
-releases (within `ttlDays`, with no new packages) take the **hot path**
-— zero npm calls for the trust check.
+This file is the per-repo state cache used by:
+- `/solo-npm:release` Phase A.3 — skips per-package trust re-checks via the `trust` section.
+- `/solo-npm:release` Phase A.5 — skips known-good audit re-runs via the `audit` section; STOPs the release if cached `tier1Count > 0`.
+- `/solo-npm:status` — renders the Trust column from cache without live npm calls.
+
+The first `/release` and `/audit` after init populate their respective sections via cold-path scans. Subsequent invocations (within each section's `ttlDays`) take the hot path — zero npm calls.
+
+**Cache TTLs**: trust = 7 days (trust state changes infrequently). Audit = 1 day (CVE landscape changes faster).
 
 The file is **committed** (not gitignored) — package names are public
 on npm anyway, and committing gives cross-machine cache sharing for

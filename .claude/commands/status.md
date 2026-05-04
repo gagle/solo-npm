@@ -1,5 +1,5 @@
 ---
-description: One-page portfolio dashboard — version, last publish, downloads, OIDC trust, commits, open issues, CI health. Read-only. Use daily/weekly for a quick sanity check.
+description: One-page portfolio dashboard across all your published packages — version, last publish, weekly downloads, OIDC trust state, recent commits, drift (unreleased commits), open GitHub issues, CI health. Triggers from prompts like "how are my packages doing", "show me the dashboard", "what's pending release", "anything published recently", "morning check", "weekly check". Read-only.
 ---
 
 # Status

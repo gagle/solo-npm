@@ -1,5 +1,5 @@
 ---
-description: Security audit across the workspace — runs npm/pnpm audit, classifies advisories by exploit risk and dep type, surfaces actionable subset, chains to /solo-npm:deps for fixes. Read-only.
+description: Security audit across the workspace — runs npm/pnpm audit, classifies advisories by exploit risk and dep type, surfaces the actionable subset, chains to /solo-npm:deps for fixes. Triggers from prompts like "audit my packages", "are there any CVEs", "what's vulnerable", "security check before release", "anything urgent in deps". Read-only; writes results to `.solo-npm/state.json#audit` for /release Phase A.5 to read.
 ---
 
 # Audit
@@ -231,6 +231,28 @@ detail: deps re-runs `pnpm audit` itself; the filter is a hint.)
   through `/solo-npm:deps` (which has the verify gates). This is
   intentional: audit shows risk; deps mitigates with safety.
 
+## Phase 6 — Update audit cache
+
+After Phase 4 renders the report (whether Phase 5's gate fired or not), write the results to `.solo-npm/state.json#audit`:
+
+```json
+{
+  "audit": {
+    "tier1Count": <count from Phase 3>,
+    "tier2Count": <count from Phase 3>,
+    "lastFullScan": "<ISO 8601 timestamp now>",
+    "ttlDays": 1
+  }
+}
+```
+
+This populates the cache that `/release` Phase A.5 reads. Cache TTL is 1 day (CVE landscape changes faster than trust state).
+
+If `cache.audit.tier1Count > 0`, the next `/release` invocation within `ttlDays` will STOP with a directive to fix Tier 1 first. The user can:
+- Run `/solo-npm:deps cve-tier-1` to address the issues (deps' Phase 7 updates the cache after a successful fix).
+- Or `rm .solo-npm/state.json` to force re-scan on next release.
+- Or re-run `/solo-npm:audit` to refresh the cache (e.g., after manual upgrades).
+
 ## What this skill does NOT do
 
 - Does NOT apply fixes. (That's `/solo-npm:deps`.)
@@ -239,4 +261,5 @@ detail: deps re-runs `pnpm audit` itself; the filter is a hint.)
   audit already does.
 - Does NOT include compliance audits (license, SBOM). Out of scope for
   v0.5.0.
-- Does NOT track historical advisories across runs (no cache).
+- Does NOT track historical advisories across runs beyond the
+  current-state cache (no time-series).

@@ -13,6 +13,10 @@ Seven slash commands that take an empty repo to a tag-triggered OIDC release flo
  │ /trust       │      │ /release     │       │ /audit  (monthly)│
  └──────────────┘      └──────────────┘       │ /deps   (on CVE) │
   one-time              per release           └──────────────────┘
+
+  LIFECYCLE TRANSITIONS (rare, explicit-intent commands):
+  /solo-npm:prerelease  ─ start/bump/promote pre-release lines (alpha/beta/rc → stable)
+  /solo-npm:hotfix      ─ patch a previous stable major (v1.x while main is on v2)
 ```
 
 ---
@@ -33,14 +37,16 @@ Tools used under the hood: [`npm-trust`](https://github.com/gagle/npm-trust) (CL
 
 ## Commands
 
-7 namespaced slash commands map to the publishing lifecycle. Each one is opinionated, idempotent, and verify-gated.
+9 namespaced slash commands map to the publishing lifecycle. Each one is opinionated, idempotent, and verify-gated.
 
 | What you're doing | Command | Key principle |
 |---|---|---|
 | Bootstrap a fresh repo | `/solo-npm:init` | One-shot scaffold + first-publish gate + chain into trust |
 | Configure OIDC trust | `/solo-npm:trust` | `npm trust github` per package, web 2FA once |
 | Run quality gates | `/solo-npm:verify` | Lint → typecheck → test → build; halt on first failure |
-| Ship a release | `/solo-npm:release` | Three-phase tag-triggered publish with **one** approval gate |
+| Ship a release | `/solo-npm:release` | Three-phase tag-triggered publish with **one** approval gate; auto-chains to prerelease on pre-release version |
+| Start/bump/promote a pre-release | `/solo-npm:prerelease` | alpha/beta/rc lifecycle on `@next` dist-tag; promote to `@latest` |
+| Hotfix a previous stable major | `/solo-npm:hotfix` | `<major>.x` branch + dist-tag-aware publish (`@latest` if still current, `@v<major>` if legacy) |
 | Snapshot the portfolio | `/solo-npm:status` | Read-only — version, downloads, trust, CI, drift |
 | Triage security advisories | `/solo-npm:audit` | Classify CVEs into 4 actionable tiers; chain to deps |
 | Upgrade dependencies | `/solo-npm:deps` | Tier-batched with `/verify` gates and rollback on failure |
@@ -61,6 +67,62 @@ Claude will:
 4. Run `/solo-npm:init` to scaffold release.yml + publishConfig + `.nvmrc` + consumer wrappers, then chain into `/solo-npm:trust` for OIDC.
 
 One conversation. The repo goes from empty to ready-to-tag.
+
+For day-to-day prompts that trigger each command (and chained workflows like *"hotfix the v1 rate limiter — it crashes on 429"*), see [`docs/prompts.md`](./docs/prompts.md).
+
+## Scope and partners
+
+solo-npm is the **release operator** for solo-dev npm packages. It owns:
+
+- Scaffolding the release infrastructure (release.yml, publishConfig, etc.)
+- Configuring OIDC trust on npm
+- Operating the release lifecycle (stable, pre-release, hotfix, promote)
+- Operating the post-release portfolio (status, audit, deps)
+
+It does NOT own:
+
+- Writing your application code
+- Writing your tests (just running them)
+- Architectural decisions, code review, debugging methodology
+- Frontend / API design / performance analysis
+
+For those, install [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) alongside. It has 7 commands and 21 skills covering DEFINE → PLAN → BUILD → VERIFY → REVIEW → SHIP for general engineering work.
+
+The two compose naturally:
+
+| You're doing | Use |
+|---|---|
+| Specifying a feature | `/agent-skills:spec` |
+| Planning the work | `/agent-skills:plan` |
+| Writing the code | `/agent-skills:build` |
+| Writing tests | `/agent-skills:test` |
+| Reviewing your code | `/agent-skills:review` |
+| **Releasing the result** | `/release` (solo-npm) |
+| **Shipping a hotfix to v1** | `/solo-npm:hotfix` (delegates the fix to `/agent-skills:debugging-and-error-recovery` if installed) |
+| Auditing security | `/agent-skills:review` for broad audit, `/solo-npm:audit` for CVE-focused triage |
+| Operating the portfolio | `/solo-npm:status`, `/solo-npm:audit`, `/solo-npm:deps` |
+
+**Recommended setup**: install both plugins. solo-npm for the release moment + portfolio ops; agent-skills for everything before that.
+
+To install agent-skills:
+
+```
+/plugin marketplace add addyosmani/agent-skills
+/plugin install agent-skills@addy-agent-skills
+```
+
+## Diagnostic prompts ("why is X failing?")
+
+For symptom-based prompts where you describe a problem rather than name a skill, Claude reads context and routes to the relevant skill:
+
+| Symptom | Claude's diagnostic path | Routes to |
+|---|---|---|
+| *"Why is my CI failing on publish?"* | Reads `gh run` logs + workflow + `npm-trust --doctor` | `/solo-npm:trust` if missing OIDC; `/solo-npm:audit` if vuln-related; `/solo-npm:init` if `release.yml` is malformed |
+| *"My package isn't installable"* | Reads `npm view` + checks dist-tags | `/solo-npm:status` to surface state; manual investigation if registry-side |
+| *"`pnpm install` is slow"* | Reads lockfile age | `/solo-npm:deps` to refresh |
+| *"Auto-update broke something"* | Reads recent commits + verify output | `/solo-npm:deps` rollback path |
+
+You don't have to know the skill names — describe the problem, and the agent routes.
 
 ---
 
@@ -91,7 +153,7 @@ When you open the repo in Claude Code, accept:
 - *Install marketplace `gllamas-skills`?* → Yes
 - *Install plugin `solo-npm@gllamas-skills`?* → Yes
 
-All seven `/solo-npm:*` commands resolve.
+All nine `/solo-npm:*` commands resolve.
 
 ### 3. Bootstrap
 
@@ -121,21 +183,28 @@ That's it. From here on, daily DX is `/release`.
 
 ---
 
-## The seven commands
+## The nine commands
 
 ### Bootstrap
 
 | Command | What it does | Use when |
 |---|---|---|
-| [`/solo-npm:init`](.claude/commands/init.md) | Umbrella scaffolder. Detects workspace shape (single / pnpm / Nx), generates release.yml + publishConfig + .nvmrc + consumer wrappers + settings.json. Idempotent — safe to re-invoke. Phase 2 gates on first publish. Phase 3 chains into `/solo-npm:trust`. | Fresh repo (or new package added to an existing monorepo) |
+| [`/solo-npm:init`](.claude/commands/init.md) | Umbrella scaffolder. Detects workspace shape (single / pnpm / Nx), generates release.yml (with dist-tag detection) + publishConfig + .nvmrc + consumer wrappers + .solo-npm/state.json + settings.json. Idempotent. Phase 2 gates on first publish. Phase 3 chains into `/solo-npm:trust`. | Fresh repo (or new package added to an existing monorepo) |
 | [`/solo-npm:trust`](.claude/commands/trust.md) | Interactive OIDC wizard. Walks `npm login`, web 2FA once, runs `npm trust github` per package, verifies. Uses the [`npm-trust`](https://github.com/gagle/npm-trust) CLI. | First OIDC setup or after publishing a new package |
 
 ### Per release
 
 | Command | What it does | Use when |
 |---|---|---|
-| [`/solo-npm:release`](.claude/commands/release.md) | Three phases. **A. Pre-flight** runs `/verify` + `npm-trust --doctor`, silent if green. **B. Plan** detects bump from conventional commits, renders summary, asks **one** structured `AskUserQuestion`. **C. Execute** bumps version, commits, pushes, tags, watches CI, verifies registry attestation. | Shipping any release |
+| [`/solo-npm:release`](.claude/commands/release.md) | Universal release entry. Three phases. **A. Pre-flight** runs `/verify` + cache-aware trust + audit cache check, silent if green. **B. Plan** detects bump from conventional commits, renders summary, asks **one** structured `AskUserQuestion`. **C. Execute** bumps version, commits, pushes, tags, watches CI, verifies registry attestation. **Auto-chains to `/solo-npm:prerelease` if current version is pre-release-shape.** | Shipping any release |
 | [`/solo-npm:verify`](.claude/commands/verify.md) | Lint + typecheck + test + build, halt on first failure. Auto-detects package manager and scripts. Composes with `/release` (Phase A.2 + C.4) and `/deps` (after each upgrade batch). | Pre-commit, pre-release, after deps changes |
+
+### Lifecycle transitions
+
+| Command | What it does | Use when |
+|---|---|---|
+| [`/solo-npm:prerelease`](.claude/commands/prerelease.md) | START a pre-release line (alpha/beta/rc) from a stable version, BUMP the counter (`beta.1` → `beta.2`), or PROMOTE to stable (`beta.n` → stable). All operations agent-driven; user never edits `package.json`. Publishes to `@next` dist-tag. | Major version transitions, risky-feature soak periods, experimental APIs, opt-in `next` channel publishes |
+| [`/solo-npm:hotfix`](.claude/commands/hotfix.md) | Patch a previous stable major (e.g., v1.5.0 → v1.5.1) while main develops the next major. Agent creates/checks-out the `<major>.x` branch, applies the fix per your description, releases with the correct dist-tag (`@latest` if still current stable, `@v<major>` legacy if newer major has shipped). Composes with `/agent-skills:debugging-and-error-recovery` if installed. | Bugs in older majors that need shipping without disturbing main's pre-release work |
 
 ### Operate the portfolio
 
@@ -156,7 +225,7 @@ Daily-use commands get wrappers; one-off and read-only commands don't:
 | Command | Wrapper? | Why |
 |---|---|---|
 | `release`, `verify` | YES | Per-repo narrative: workspace shape, prepare-dist usage, custom verification commands |
-| `init`, `trust`, `status`, `audit`, `deps` | NO | One-off or auto-detected — no per-repo customization |
+| `init`, `trust`, `status`, `audit`, `deps`, `prerelease`, `hotfix` | NO | One-off, lifecycle-transition, or auto-detected — no per-repo customization |
 
 `/solo-npm:init` scaffolds the wrappers automatically when you bootstrap.
 

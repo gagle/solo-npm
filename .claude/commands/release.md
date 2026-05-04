@@ -1,5 +1,5 @@
 ---
-description: Generic opinionated baseline for tag-triggered npm releases with OIDC provenance and one approval — three phases (pre-flight, plan, execute). Wrap via .claude/skills/release/SKILL.md for repo-specific narrative.
+description: Universal release entry point — tag-triggered npm release with OIDC provenance and one approval gate. Triggers from prompts like "ship it", "release this", "cut a release", "time to release v0.5.4", "push to npm", "get on npm". Auto-chains to /solo-npm:prerelease on pre-release version. Three phases (pre-flight, plan, execute). Wrap via .claude/skills/release/SKILL.md for repo-specific narrative.
 ---
 
 # Release
@@ -25,6 +25,28 @@ they want a release, not a menu of options.
 
 Minimum-friction shape: **one `AskUserQuestion` per destructive
 operation, max.** Everything fixable auto-chains.
+
+## Manual overrides (power-user escape hatches)
+
+| Scenario | Action |
+|---|---|
+| Want to start a pre-release line | Use `/solo-npm:prerelease`. `/release` from a stable version doesn't know to enter pre-release mode. |
+| Want to start a hotfix on an older major | Use `/solo-npm:hotfix`. `/release` from main can't infer which older major to patch. |
+| Want a different version than the auto-bump (e.g., `1.5.0` jump from `0.4.0`) | Mention the version in the prompt: *"Time to release v1.5.0"*. `/release` Phase 0 detects the named version and pre-fills `NEXT_VERSION`. |
+| Want to bump differently than auto-derived | Improve commit messages (`feat!:` for breaking, `feat:` for minor, `fix:` for patch). Auto-bump reflects what your commits say. |
+| Want custom changelog text | After the release commit lands, follow up with `docs(changelog): clarify v{X} notes` — auto-changelog regenerates correctly on the next release. |
+| Want to continue an in-progress pre-release | Just type `/release`. It auto-detects pre-release version and chains into `/solo-npm:prerelease`. **No manual git/code work.** |
+
+## Phase 0 — Read prompt context
+
+Scan the user's invoking prompt for explicit version mentions (`v0.5.4`, `0.5.4`, `version 1.0.0`). If a specific version is named:
+
+- Pre-fill `NEXT_VERSION` with the named version.
+- Continue computing auto-bump from commits in B.4 as usual.
+- If auto-bump matches user's named version: proceed silently to B.5 with `NEXT_VERSION` set.
+- If auto-bump differs: render both in the plan summary ("auto-bump suggests v0.5.5; you said v0.5.4") and B.5 offers `Proceed with v{user-named} (your override) / Proceed with v{auto-bump} / Abort`.
+
+If no version is named: continue as today (auto-bump derives, B.5 prompts Proceed/Abort).
 
 ## Who this is for
 
@@ -155,7 +177,21 @@ invocation paths.**
 | Any other `warn`-severity issue | Surface as a one-line note, but proceed. |
 
 Phase A passes silently for the typical case (everything green) or
-after auto-fix completes. Move to Phase B.
+after auto-fix completes. Move to Phase A.5.
+
+### A.5 Cache-aware audit check
+
+Read `.solo-npm/state.json#audit`. Branch:
+
+| Condition | Action |
+|---|---|
+| Cache fresh (`now - audit.lastFullScan < audit.ttlDays`) AND `audit.tier1Count == 0` | Skip — proceed to Phase B. |
+| Cache fresh AND `audit.tier1Count > 0` | **STOP**. Surface: *"Your last security audit (run X days ago) found <N> Tier-1 vulnerabilities. Run `/solo-npm:audit` to review, then `/solo-npm:deps` to fix before releasing. (To bypass: `rm .solo-npm/state.json` forces re-scan on next release; or run `/solo-npm:audit` to verify and re-cache.)"* |
+| Cache stale OR missing | Skip — don't block release on no-info. The next `/solo-npm:audit` invocation populates the cache. |
+
+This gate catches "we have a known critical CVE" before publishing without ever running a fresh audit. Zero-latency on the common path; explicit STOP only when there's an actionable gap.
+
+Move to Phase B.
 
 ## Phase B — Plan and confirm
 
@@ -165,21 +201,23 @@ after auto-fix completes. Move to Phase B.
 git tag --list 'v*' --sort=-v:refname | head -1
 ```
 
-Call this `LATEST_TAG`. If empty → first release; ask the user via
-`AskUserQuestion`:
+Call this `LATEST_TAG`. If empty → **first release**: render the changelog draft + plan summary as visible chat output, then ask the user via `AskUserQuestion`:
 
 - header: `"First release"`
-- options: `0.1.0` / `1.0.0` / `Override (specify)` / `Abort`
+- options: `0.1.0` / `1.0.0` / `Other (specify)` / `Abort`
 
-### B.2 Detect version mode
+If the user picks a version: set `NEXT_VERSION = picked`. Plan summary already rendered above. **Skip B.5 entirely** — the user already approved the version + saw the changelog. Proceed directly to Phase C.
 
-Parse `package.json#version` (or the main package's `package.json#version`
-for monorepos). Two modes:
+### B.2 Detect version mode + auto-chain to /solo-npm:prerelease
+
+Parse `package.json#version` (or the main package's `package.json#version` for monorepos). Two modes:
 
 - **Stable** — current version matches `^\d+\.\d+\.\d+$`
 - **Pre-release** — current version matches `^\d+\.\d+\.\d+-[a-z]+\.\d+$`
 
-The mode determines B.5's option set.
+**If pre-release: AUTO-INVOKE `/solo-npm:prerelease`.** The user typed `/release` but the version state means they're continuing a pre-release line. The prerelease skill handles bump / promote / abort. End this skill's flow once prerelease returns control.
+
+If stable: continue to B.3. (B.5's options become only the stable-mode prompt; pre-release options have moved to /solo-npm:prerelease.)
 
 ### B.3 Collect commits since `LATEST_TAG`
 
@@ -210,10 +248,15 @@ Highest applicable wins:
 | Any Fix / Performance / Revert commit (no Features / Breaking) | patch |
 | Only Other commits | **STOP** — nothing to release |
 
-Call the result `NEXT_VERSION`. (Pre-release mode skips this step —
-B.5 offers explicit options instead.)
+Call the result `AUTO_BUMP_VERSION`.
 
-### B.5 Render summary + AskUserQuestion
+If Phase 0's prompt-context extraction pre-filled `NEXT_VERSION`:
+- If `NEXT_VERSION == AUTO_BUMP_VERSION`: silent agreement; proceed to B.5 with `NEXT_VERSION`.
+- If `NEXT_VERSION != AUTO_BUMP_VERSION`: render BOTH in the plan summary and B.5 offers a 3-way choice.
+
+Otherwise: `NEXT_VERSION = AUTO_BUMP_VERSION`.
+
+### B.5 Render summary + AskUserQuestion (stable mode only)
 
 Render this summary block to the chat (so it stays visible):
 
@@ -228,47 +271,30 @@ Release plan:
   CHANGELOG     {first 4 lines visible; "expand" to show full draft}
 ```
 
-Then call the `AskUserQuestion` tool (load via
-`ToolSearch query="select:AskUserQuestion"` if its schema isn't loaded).
+Then call the `AskUserQuestion` tool. Two cases:
 
-**Stable mode** — current version matches `^\d+\.\d+\.\d+$`:
+**Default** — auto-bump matches user's intent (or no version named in prompt):
 
-- header: `"Release"`
-- question: `"Approve the release plan above?"`
-- multiSelect: `false`
-- options:
-  1. `Proceed with v{NEXT}` — Run Phase C with the recommended bump
-  2. `Override version` — Specify a different version (free-form;
-     accepts pre-release strings like `1.3.0-beta.1` to start a
-     pre-release line)
-  3. `Edit changelog` — Open the CHANGELOG draft in `$EDITOR`
-  4. `Abort` — No changes; end the skill
+```
+header:   "Release"
+question: "Approve the release plan above?"
+options:  Proceed with v{NEXT} / Abort
+```
 
-**Pre-release mode** — current version matches
-`^\d+\.\d+\.\d+-[a-z]+\.\d+$`:
+**Override variant** — Phase 0 named a version different from `AUTO_BUMP_VERSION`:
 
-- header: `"Release"`
-- question: `"Approve the release plan above?"`
-- multiSelect: `false`
-- options:
-  1. `Bump pre-release counter` — e.g., `1.3.0-beta.1` → `1.3.0-beta.2`
-  2. `Promote to stable` — e.g., `1.3.0-beta.n` → `1.3.0`
-  3. `Override version` — Specify a different version
-  4. `Abort` — No changes
+```
+header:   "Release"
+question: "Auto-bump suggests v{AUTO_BUMP}; you said v{NAMED}. Which?"
+options:
+  1. Proceed with v{NAMED} (your override)
+  2. Proceed with v{AUTO_BUMP} (auto-bump from commits)
+  3. Abort
+```
 
-Wait for the user's selection. **Do not act yet.** Then branch:
+That's it. **No `Override version` (free-form) and no `Edit changelog`** — both are friction. Power users who need them follow the "Manual overrides" guidance at the top of this skill.
 
-- `Proceed with v{NEXT}` / `Bump pre-release counter` / `Promote to
-  stable` → continue to Phase C
-- `Override version` → ask the user (free-form follow-up) for the new
-  version, set `NEXT_VERSION = X.Y.Z`, re-render the summary, and call
-  `AskUserQuestion` again
-- `Edit changelog` → open `$EDITOR` on the CHANGELOG draft, on save
-  re-render the summary and call `AskUserQuestion` again
-- `Abort` → no state changes; end the skill
-
-There is no fallback to free-text "yes/no" prompts. One summary, one
-structured prompt, one answer.
+On Proceed: continue to Phase C. On Abort: no state changes; end.
 
 ### B.6 Render the CHANGELOG draft
 

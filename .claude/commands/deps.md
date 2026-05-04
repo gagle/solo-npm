@@ -1,5 +1,5 @@
 ---
-description: Curated dependency upgrade orchestrator with /verify gates — classifies into tiers (trivial/safe/major/CVE), batches in dep-graph order, rolls back on failure. Major upgrades require AskUserQuestion. Use monthly or on CVE.
+description: Dependency upgrade orchestrator with /verify gates — classifies into tiers (trivial/safe/major/CVE), batches in dep-graph order, rolls back on failure. Triggers from prompts like "update my deps", "bump packages", "refresh dependencies", "catch up on dep versions", "apply CVE fixes", "upgrade typescript to v6", "don't break anything but update what's safe". Major upgrades require AskUserQuestion. Use monthly or on CVE.
 ---
 
 # Deps
@@ -8,6 +8,28 @@ The chore solo devs skip. Dep upgrades are tedious, hostile to focus,
 and risky. This skill orchestrates them with strict guardrails:
 discover → classify → plan → apply (verify each batch) → commit →
 rollback on failure.
+
+## Phase 0 — Read prompt context
+
+Scan the user's invoking prompt for hints that pre-fill subsequent decisions:
+
+| Prompt mentions | Pre-fill |
+|---|---|
+| Specific dep names (`typescript`, `eslint`, `tar-fs`) | `TARGET_DEPS=[name1, name2, ...]` — limit `pnpm outdated` to those |
+| `don't break anything`, `safe updates only`, `trivial only` | Pre-pick `Trivial only` tier; skip Phase 3's question |
+| `update what's safe`, `safe stuff`, `safe updates` | Pre-pick `Trivial + Safe`; skip question |
+| `all except major`, `no major bumps` | Pre-pick `All except Major`; skip question |
+| `everything`, `all of it`, `all upgrades` | Pre-pick `All including Major` (still per-major gates fire) |
+| `fix Tier 1`, `CVE fixes`, `apply CVEs from audit` | Pre-pick `cve-tier-1` filter (chained from /audit) |
+| Specific target version (`upgrade typescript to v6`) | Set `TARGET_DEPS=[typescript]` AND target version 6; skip Phase 3's question |
+
+Examples:
+- *"Upgrade typescript to v6"* → `TARGET_DEPS=[typescript]`, target version 6. Skip tier prompt; Phase 3 renders 1-row plan; user clicks Proceed.
+- *"Update what's safe"* → pre-pick Trivial+Safe; skip tier prompt.
+- *"Fix Tier 1 from the audit"* → pre-pick `cve-tier-1`; skip tier prompt.
+- Bare *"update deps"* → full classify + tier prompt.
+
+If extraction is ambiguous, pre-fill what's clear and ask the rest. Don't over-extract.
 
 ## When to use
 
@@ -231,34 +253,39 @@ by user's per-dep gate).
 
 Wait for the result. The verify skill returns `VERIFY_OK` or fails.
 
-### 4d. Branch on /verify result
+### 4d. Branch on /verify result (composes with agent-skills)
 
 **On success**: continue to 4e (commit).
 
-**On failure**: rollback this batch.
+**On failure**: diagnose first, then decide.
 
 ```bash
 git checkout package.json pnpm-lock.yaml
 # Or for monorepo: git checkout package.json pnpm-lock.yaml packages/*/package.json
 ```
 
-Then surface the failure to the user and call `AskUserQuestion`:
+(The rollback happens before diagnosis to leave the working tree clean for analysis.)
+
+**If `agent-skills@*` is installed** (check Claude Code's enabled plugins):
+
+Invoke `/agent-skills:debugging-and-error-recovery` with the verify failure output as context. That skill brings reproduce → localise → reduce → fix → guard methodology, suited to "a dep upgrade broke the test suite". After diagnosis returns:
+
+- If diagnosis identifies a single-dep cause: drop that dep from the batch, re-apply the rest (without it), re-verify. (Same outcome as the binary-search fallback below, but driven by analysis.)
+- If diagnosis suggests the batch as a whole is incompatible: rollback stays; AskUserQuestion (Skip batch / Fix manually / Abort).
+
+**If `agent-skills` is not installed** (fallback):
+
+Surface the failure to the user and call `AskUserQuestion`:
 
 - header: `"Verify failed"`
 - question: `"How to handle <failed-batch-name>?"`
 - options:
-  1. `Skip this dep, continue` — drop the failing dep from the batch,
-     re-apply the rest, re-verify
-  2. `Skip the whole batch, continue` — drop the entire batch, move
-     to next tier
-  3. `Fix manually then continue` — pause; the user fixes, then
-     types "continue" in chat to proceed (free-form)
-  4. `Abort all upgrades` — rollback all in-flight batches, leave
-     committed batches in place
+  1. `Skip this dep, continue` — drop the failing dep from the batch (binary-search if > 5 deps; one-at-a-time if ≤ 5), re-apply the rest, re-verify
+  2. `Skip the whole batch, continue` — drop the entire batch, move to next tier
+  3. `Fix manually then continue` — pause; user fixes, then types "continue" in chat
+  4. `Abort all upgrades` — rollback all in-flight batches, leave committed batches in place
 
-If "Skip this dep, continue", reduce the batch to its working subset
-(by binary search if the batch had > 5 deps, or one-at-a-time if ≤ 5).
-This handles the common case of one bad apple in a batch.
+solo-npm works standalone via the fallback. Recommended setup is solo-npm + agent-skills installed together (see README "Scope and partners").
 
 ### 4e. Commit (only on success)
 
@@ -329,6 +356,18 @@ Suggested next steps:
   - /release ready?  (if commits are version-worthy)
   - /solo-npm:audit  (confirm CVEs are resolved)
 ```
+
+## Phase 7 — Update audit cache
+
+If any of the upgraded packages addressed advisories from the most recent `/solo-npm:audit` run (i.e., `cve-tier-1` filter was used, OR the upgrades resolved tier-1 entries based on package match):
+
+1. Read `.solo-npm/state.json#audit`.
+2. Recompute `tier1Count` (subtract resolved advisories) and `tier2Count` (similarly).
+3. Save.
+
+This keeps `/release` Phase A.5's audit cache consistent: a successful CVE-fix batch via /deps means the next /release won't STOP on the cached tier-1 count.
+
+If no audit-related work was done, leave `cache.audit` untouched.
 
 ## Sharp edges
 

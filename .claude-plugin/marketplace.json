@@ -11,7 +11,7 @@
         "source": "github",
         "repo": "gagle/solo-npm"
       },
-      "description": "Seven skills for the full npm publishing lifecycle: bootstrap (init, trust), per-release (release, verify), portfolio operations (status, audit, deps). OIDC + provenance; AI-driven solo-dev workflows."
+      "description": "Nine slash commands for the full npm publishing lifecycle: bootstrap (init, trust), per-release (release, verify), lifecycle transitions (prerelease, hotfix), portfolio operations (status, audit, deps). OIDC + provenance; AI-driven solo-dev workflows. Composes with addyosmani/agent-skills for development phases."
     }
   ]
 }

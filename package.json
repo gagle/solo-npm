@@ -1,6 +1,6 @@
 {
   "name": "solo-npm",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Seven skills for AI-driven solo-dev npm publishing — full lifecycle: bootstrap (/solo-npm:init, /solo-npm:trust), per-release (/solo-npm:release, /solo-npm:verify), portfolio operations (/solo-npm:status, /solo-npm:audit, /solo-npm:deps). OIDC + provenance. Release and verify are designed to be wrapped per-repo via thin wrappers.",
   "license": "MIT",
   "author": "Gabriel Llamas",
