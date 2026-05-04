@@ -1,6 +1,6 @@
 {
   "name": "release-solo-npm",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Three-phase /release-solo-npm skill for tag-triggered npm publishing with OIDC + provenance, plus a default /verify-solo-npm skill. Designed for AI-driven solo dev.",
   "license": "MIT",
   "author": "Gabriel Llamas",

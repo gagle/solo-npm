@@ -11,7 +11,7 @@
         "source": "github",
         "repo": "gagle/release-solo-npm"
       },
-      "description": "Three-phase /release-solo-npm skill for tag-triggered npm publishing with OIDC + provenance, plus a default /verify-solo-npm skill. Designed for AI-driven solo dev."
+      "description": "Three skills for AI-driven solo dev shipping npm packages: /init-solo-npm scaffolds release.yml + publishConfig + .nvmrc on a fresh repo (public OR private registry). /release-solo-npm drives tag-triggered npm publishing with OIDC + provenance and one approval gate. /verify-solo-npm runs lint+test+build."
     }
   ]
 }

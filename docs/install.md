@@ -11,12 +11,29 @@ In Claude Code:
 /plugin install release-solo-npm@gllamas-skills
 ```
 
-This installs two skills into your repo's `.claude/skills/`:
+This installs three skills into your repo's `.claude/skills/`:
 
+- `init-solo-npm/SKILL.md` — one-shot scaffolder for fresh repos
 - `release-solo-npm/SKILL.md` — the canonical `/release-solo-npm` skill
 - `verify-solo-npm/SKILL.md` — a default `/verify-solo-npm` skill
 
-## 2. Edit the placeholders in `release-solo-npm/SKILL.md`
+## 2. (Easy path) Run `/init-solo-npm` to scaffold everything
+
+If your repo doesn't already have `release.yml` + `publishConfig` +
+`engines.node` + `.nvmrc` + the `npm-trust:setup` script, run
+`/init-solo-npm` once. It detects current state, asks one
+`AskUserQuestion`, and scaffolds only what's missing. Idempotent.
+Supports public npm AND private/custom registries.
+
+```
+/init-solo-npm
+```
+
+After `/init-solo-npm` finishes, the printed checklist covers the
+last manual steps (devDep install, OIDC trust setup or GitHub secret
+config). Then jump to step 4.
+
+## 3. (Manual path) Edit the placeholders in `release-solo-npm/SKILL.md`
 
 Open `.claude/skills/release-solo-npm/SKILL.md` and find the
 **Placeholders** table near the top. Replace each placeholder
@@ -36,7 +53,7 @@ If your repo is a **monorepo**, keep the monorepo block and replace
 `<MAIN_PACKAGE_DIR>` with the path to the package whose version is
 canonical (e.g., `packages/core`).
 
-## 3. Customize `verify-solo-npm/SKILL.md` if needed
+## 4. Customize `verify-solo-npm/SKILL.md` if needed
 
 The default `/verify-solo-npm` skill runs lint + test + build. Edit
 `.claude/skills/verify-solo-npm/SKILL.md` to add anything else your
@@ -46,7 +63,7 @@ stack needs:
 - `pnpm typecheck` if separate from lint
 - Coverage gates, license audits, bundle size limits
 
-## 4. Verify prerequisites
+## 5. Verify prerequisites
 
 Make sure you have:
 
@@ -58,11 +75,11 @@ Make sure you have:
   the trust setup wizard:
   ```
   pnpm add -D npm-trust
-  pnpm exec npm-trust --init-skill setup-npm-trust
+  pnpm exec npm-trust --init-skill npm-trust-setup
   ```
-  Then invoke `/setup-npm-trust` in Claude Code.
+  Then invoke `/npm-trust-setup` in Claude Code.
 
-## 5. Run the skill
+## 6. Run the skill
 
 In Claude Code, type:
 
@@ -87,4 +104,4 @@ The skill walks through:
   provenance (custom registries can't sign with Sigstore) or change
   the registry back to public npm.
 - **CI fails on tag push**: the publish workflow likely needs OIDC
-  trust to be configured. Run the `/setup-npm-trust` wizard first.
+  trust to be configured. Run the `/npm-trust-setup` wizard first.

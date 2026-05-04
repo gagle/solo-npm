@@ -55,17 +55,44 @@ a notification when the tarball is on npm with provenance. That's it.
 /plugin install release-solo-npm@gllamas-skills
 ```
 
-This installs both `/release-solo-npm` and `/verify-solo-npm` skills
-into Claude Code.
+This installs three skills into Claude Code: `/init-solo-npm`,
+`/release-solo-npm`, and `/verify-solo-npm`.
+
+## Initializing a fresh repo with `/init-solo-npm`
+
+Going from "I have a repo" to "the release skill works out of the
+box" used to mean manually scaffolding `release.yml`, `publishConfig`,
+`engines.node`, `.nvmrc`, the `npm-trust:setup` script, etc.
+`/init-solo-npm` does all that with one approval gate.
+
+```
+cd path/to/your/repo
+# in Claude Code:
+/init-solo-npm
+```
+
+The skill detects existing repo state, shows you the diff it'll
+apply, asks one `AskUserQuestion`, then scaffolds only what's
+missing. Idempotent — safe to run multiple times. Supports both
+public npm (OIDC + provenance) and private/custom registries (token
+auth via GitHub Actions secret).
+
+After `/init-solo-npm` finishes, the printed checklist covers the
+remaining manual steps (devDep install, OIDC trust setup or GitHub
+secret config). Then `/release-solo-npm` works.
 
 ## Prerequisites
+
+If you used `/init-solo-npm`, prerequisites are taken care of. If
+you're configuring manually:
 
 - A tag-triggered `release.yml` workflow that publishes via
   `pnpm publish --no-git-checks` and reads `publishConfig` from
   `package.json`.
 - OIDC trust configured for the package (one-time setup via
   [`gagle/npm-trust`](https://github.com/gagle/npm-trust) and the
-  bundled `setup-npm-trust` skill).
+  bundled `npm-trust-setup` skill). Skip this for private/custom
+  registries — they use token auth instead.
 - Conventional commit messages (`feat:`, `fix:`, etc.) since the
   release skill parses them to compute the version bump.
 
@@ -99,9 +126,23 @@ type something like `1.3.0-beta.1` — the skill accepts it verbatim.
 
 ## Custom / private registries
 
-Set `publishConfig.registry` to your registry URL in `package.json`.
-The skill detects this and skips the provenance verification step
-(SLSA only works on public npm).
+The release skill works against public npm (default) and any custom /
+private registry that respects npm token auth (Verdaccio, JFrog
+Artifactory, GitHub Packages, GitLab Package Registry, etc.).
+
+### What changes for custom registries
+
+| Concern | Public npm | Custom / private |
+|---|---|---|
+| Auth in CI | OIDC (no secrets needed) | `NODE_AUTH_TOKEN` env from GitHub Actions secret |
+| `release.yml` permissions | `id-token: write` | (no `id-token`) |
+| `package.json#publishConfig` | `{ access, provenance: true }` | `{ access, registry: "<URL>" }` (no provenance) |
+| SLSA provenance attestation | ✓ | ✗ (Sigstore is npmjs.com-only) |
+| Phase C.7 verify on registry | `npm view <pkg> dist.attestations` | Skipped (no provenance to verify) |
+
+### Configuration shape
+
+**Fully private** (all packages go to your registry):
 
 ```json
 "publishConfig": {
@@ -110,8 +151,53 @@ The skill detects this and skips the provenance verification step
 }
 ```
 
-Note: do NOT include `"provenance": true` for custom registries.
-`npm-trust --doctor` will flag the misconfig (`REGISTRY_PROVENANCE_CONFLICT`).
+**Scoped private** (only `@my-org/*` goes private; everything else
+resolves from public npm):
+
+```jsonc
+// package.json
+"publishConfig": {
+  "access": "public",
+  "registry": "https://npm.your-internal-registry.example.com/"
+}
+
+// .npmrc (committed at repo root, scope mappings only — NEVER auth)
+@my-org:registry=https://npm.your-internal-registry.example.com/
+```
+
+For either shape, **omit `"provenance": true`** from `publishConfig`.
+`npm-trust --doctor` flags this as `REGISTRY_PROVENANCE_CONFLICT` if
+both are set.
+
+### Auth in CI
+
+`actions/setup-node@v4` with `registry-url` + `always-auth: true`
+writes a temporary `.npmrc` at job runtime that pulls auth from
+`NODE_AUTH_TOKEN`. The token comes from a GitHub Actions repo secret
+(commonly named `NPM_TOKEN`):
+
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    node-version-file: .nvmrc
+    cache: pnpm
+    registry-url: https://npm.your-internal-registry.example.com/
+    always-auth: true
+- run: pnpm publish --no-git-checks
+  env:
+    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+NEVER commit a literal `_authToken=...` line in `.npmrc`. The token
+belongs in env / repo secrets only. `npm-trust --doctor` flags this
+as `NPMRC_LITERAL_TOKEN`.
+
+### `/init-solo-npm` handles both
+
+If you start with `/init-solo-npm`, the skill detects whether
+`publishConfig.registry` (or `.npmrc`) already points at a custom
+registry and picks the right `release.yml` template + omits
+`provenance: true`. You don't have to remember any of the above.
 
 ## Monorepos
 
