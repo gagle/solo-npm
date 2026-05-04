@@ -1,12 +1,5 @@
 ---
-name: verify
-description: >
-  Generic opinionated baseline for running lint + test + build. Auto-detects
-  the package manager and the project's verification scripts via
-  `package.json#scripts`. Halts on first failure; surfaces full output. Wrap
-  via .claude/skills/verify/SKILL.md for repo-specific commands (e2e,
-  coverage thresholds, monorepo nx run-many, etc.); invoke directly only
-  for the unmodified flow.
+description: Generic opinionated baseline for running lint + typecheck + test + build with auto-detected commands. Halts on first failure. Wrap via .claude/skills/verify/SKILL.md for repo-specific commands (e2e, coverage, nx run-many).
 ---
 
 # Verify

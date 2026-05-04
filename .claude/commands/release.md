@@ -1,13 +1,5 @@
 ---
-name: release
-description: >
-  Generic opinionated baseline for tag-triggered npm releases with OIDC
-  provenance and ONE human approval. Three phases: pre-flight (silent if
-  green), plan (one AskUserQuestion), execute (silent through verification).
-  Auto-detects workspace shape, repo slug, packages, and workflow via
-  `npm-trust --doctor`. Composes with /solo-npm:verify. Wrap via
-  .claude/skills/release/SKILL.md for repo-specific narrative; invoke
-  directly only for the unmodified flow.
+description: Generic opinionated baseline for tag-triggered npm releases with OIDC provenance and one approval — three phases (pre-flight, plan, execute). Wrap via .claude/skills/release/SKILL.md for repo-specific narrative.
 ---
 
 # Release

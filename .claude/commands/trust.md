@@ -1,12 +1,5 @@
 ---
-name: trust
-description: >
-  Configure npm OIDC Trusted Publishing across the repo's packages. Detects
-  workspace shape, shows current trust state, filters to packages still
-  needing setup, walks the user through any required manual steps
-  (`npm login`, web 2FA, `npm publish`), runs the configuration via the
-  `npm-trust` CLI, and verifies the result. Use on first OIDC setup or
-  when adding new packages to a trust-configured repo.
+description: Configure npm OIDC Trusted Publishing across the repo's packages — interactive wizard via the npm-trust CLI. Use on first OIDC setup or when adding new packages.
 ---
 
 # Trust

@@ -1,14 +1,5 @@
 ---
-name: deps
-description: >
-  Curated dependency upgrade orchestrator with /verify gates. Detects
-  outdated and vulnerable deps via `pnpm outdated` + `pnpm audit`,
-  classifies into tiers (trivial/safe/major/CVE-driven), batches the
-  safe upgrades in dependency-graph order, runs /verify after each
-  batch, and rolls back on failure with an `AskUserQuestion` gate. One
-  commit per batch with structured message. Major upgrades NEVER
-  auto-applied — surfaces upstream release notes for human review. Use
-  monthly for maintenance or reactively when CVEs land.
+description: Curated dependency upgrade orchestrator with /verify gates — classifies into tiers (trivial/safe/major/CVE), batches in dep-graph order, rolls back on failure. Major upgrades require AskUserQuestion. Use monthly or on CVE.
 ---
 
 # Deps

@@ -1,12 +1,5 @@
 ---
-name: audit
-description: >
-  Security audit across the workspace. Runs `npm/pnpm audit`, classifies
-  advisories by exploit risk (critical/high/moderate/low) and dep type
-  (runtime vs dev, direct vs transitive), and surfaces only the actionable
-  subset. Suggests fix paths: in-place upgrade (chains to /solo-npm:deps),
-  transitive override, or wait for upstream patch. Read-only — does not
-  apply fixes itself. Use monthly or when an advisory lands.
+description: Security audit across the workspace — runs npm/pnpm audit, classifies advisories by exploit risk and dep type, surfaces actionable subset, chains to /solo-npm:deps for fixes. Read-only.
 ---
 
 # Audit

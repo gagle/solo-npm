@@ -1,12 +1,5 @@
 ---
-name: status
-description: >
-  One-page portfolio dashboard. Snapshot of all your published packages —
-  latest version, last publish date, weekly downloads, OIDC trust state,
-  recent commits, open issues, CI health. Read-only; no state changes.
-  Use daily/weekly for a quick sanity check or portfolio review. Surfaces
-  action hints (e.g., "@pkg has unreleased commits → /release ready?")
-  but does not act on them.
+description: One-page portfolio dashboard — version, last publish, downloads, OIDC trust, commits, open issues, CI health. Read-only. Use daily/weekly for a quick sanity check.
 ---
 
 # Status

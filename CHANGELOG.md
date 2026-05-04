@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.5.2 — Strip `name:` frontmatter from commands to match addyosmani
+
+Even after moving entries to `.claude/commands/<name>.md` in v0.5.1,
+Claude Code's autocomplete still rendered them with the skill format
+(`/<name> (<plugin>)`) instead of the command format
+(`/<plugin>:<name>`). Comparing our command files against
+addyosmani/agent-skills's `.claude/commands/spec.md`, the difference
+was in the frontmatter:
+
+- addyosmani: `description: <one-line>` only.
+- ours: `name: <name>` + `description: >` (block scalar, multi-line).
+
+The `name:` field is for skill folders (`skills/<name>/SKILL.md` where
+the directory name is the canonical name). For commands (flat .md
+files), the filename IS the name and the `name:` field signals "this
+is a skill" to Claude Code's parser, triggering the skill display
+format even though the file lives in `.claude/commands/`.
+
+This release strips the `name:` field from every command and inlines
+the description as a one-line string, matching addyosmani's shape
+exactly.
+
 ## v0.5.1 — Move skills → commands for namespaced autocomplete
 
 Claude Code's autocomplete renders **plugin commands** (in `.claude/commands/`)

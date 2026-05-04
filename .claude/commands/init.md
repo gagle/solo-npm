@@ -1,13 +1,5 @@
 ---
-name: init
-description: >
-  Bootstrap a fresh repo for tag-triggered npm publishing with OIDC +
-  provenance. Phase 1 scaffolds release.yml + publishConfig + .nvmrc +
-  consumer wrappers (.claude/skills/release/, .claude/skills/verify/) +
-  .claude/settings.json. Phase 2 gates on first manual publish if the
-  package isn't on npm yet. Phase 3 chains into /solo-npm:trust for OIDC
-  config. Phase 4 done. Use once per fresh repo; safe to re-invoke
-  (idempotent — never overwrites existing artifacts).
+description: Bootstrap a fresh repo for tag-triggered npm publishing with OIDC + provenance — scaffold release.yml + publishConfig + .nvmrc + consumer wrappers + .claude/settings.json, gate on first manual publish, then chain into /solo-npm:trust. Idempotent.
 ---
 
 # Init
