@@ -31,7 +31,7 @@ solo-npm replaces that friction with **one structured `AskUserQuestion` checkpoi
 
 Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) replace the morning ritual of opening five browser tabs to check on your portfolio. One terminal command per concern.
 
-Tools used under the hood: [`npm-trust`](https://github.com/gagle/npm-trust) (CLI for OIDC trust config), [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) (monorepo dist translation, optional).
+Tools used under the hood: [`npm-trust`](https://github.com/gagle/npm-trust) (CLI for OIDC trust config), [`gagle/prepare-dist`](https://github.com/gagle/prepare-dist) (monorepo dist translation, optional).
 
 ---
 
@@ -247,7 +247,7 @@ Composes /solo-npm:release with this repo's specifics.
 
 - Workspace: pnpm + Nx monorepo at `packages/*`
 - Versioning: unified — single git tag bumps every package
-- Publish: per-package matrix in `release.yml`; uses `gagle/prepare-dist@v1`
+- Publish: per-package matrix in `release.yml`; uses `gagle/prepare-dist`
 - Repo slug: `gagle/ncbijs`
 - Workflow: `release.yml`
 - Verification: `/verify` runs `pnpm nx run-many -t lint typecheck build test`
@@ -336,7 +336,7 @@ The release command auto-detects pnpm + Nx monorepos and iterates `packages/*` f
 
 See [`gagle/ncbijs`](https://github.com/gagle/ncbijs) as a working example.
 
-**Publishing from `dist/` with `gagle/prepare-dist@v1`:** monorepos that publish from `<package>/dist/` (rather than `<package>/`) commonly pair with the [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) GitHub Action — it cleans up `<dist>/package.json` (strips `dist/` prefix from paths, drops dev fields, copies README + LICENSE) and verifies the version matches the pushed tag.
+**Publishing from `dist/` with `gagle/prepare-dist`:** monorepos that publish from `<package>/dist/` (rather than `<package>/`) commonly pair with the [`gagle/prepare-dist`](https://github.com/gagle/prepare-dist) GitHub Action — it cleans up `<dist>/package.json` (strips `dist/` prefix from paths, drops dev fields, copies README + LICENSE) and verifies the version matches the pushed tag.
 
 | Layer | Owner |
 |---|---|
@@ -346,7 +346,7 @@ See [`gagle/ncbijs`](https://github.com/gagle/ncbijs) as a working example.
 | `npm publish` from `<package>/dist/` | `release.yml` publish step |
 | Registry verify | release command (Phase C.7) |
 
-The consumer's release wrapper notes "uses `gagle/prepare-dist@v1`" so the agent expects the dist-translation phase in CI.
+The consumer's release wrapper notes "uses `gagle/prepare-dist`" so the agent expects the dist-translation phase in CI.
 
 </details>
 
@@ -373,7 +373,7 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for details.
 ## See also
 
 - [`gagle/npm-trust`](https://github.com/gagle/npm-trust) — pure CLI for npm OIDC Trusted Publishing. The `/solo-npm:trust` and `/solo-npm:audit` commands orchestrate this CLI.
-- [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) — GitHub Action for translating monorepo source `package.json` → `dist/package.json` at publish time.
+- [`gagle/prepare-dist`](https://github.com/gagle/prepare-dist) — GitHub Action for translating monorepo source `package.json` → `dist/package.json` at publish time.
 
 ---
 
