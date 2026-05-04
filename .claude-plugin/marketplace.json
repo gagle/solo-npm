@@ -6,12 +6,20 @@
   },
   "plugins": [
     {
-      "name": "release-solo-npm",
+      "name": "solo-npm",
       "source": {
         "source": "github",
-        "repo": "gagle/release-solo-npm"
+        "repo": "gagle/solo-npm"
       },
-      "description": "Three skills for AI-driven solo dev shipping npm packages: /init-solo-npm scaffolds release.yml + publishConfig + .nvmrc on a fresh repo (public OR private registry). /release-solo-npm drives tag-triggered npm publishing with OIDC + provenance and one approval gate. /verify-solo-npm runs lint+test+build."
+      "description": "Init + release + verify skills for tag-triggered npm publishing with OIDC + provenance. Designed for AI-driven solo dev."
+    },
+    {
+      "name": "npm-trust",
+      "source": {
+        "source": "github",
+        "repo": "gagle/npm-trust"
+      },
+      "description": "OIDC trust setup wizard for npm Trusted Publishing. Composes with solo-npm."
     }
   ]
 }

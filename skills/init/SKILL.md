@@ -1,5 +1,5 @@
 ---
-name: init-solo-npm
+name: init
 description: >
   Initialize an existing repo with the opinionated solo-AI-dev release
   workflow. Detects current state, asks ONE structured question, then
@@ -7,7 +7,7 @@ description: >
   script (idempotent — only creates what's missing). Supports both
   public npm (OIDC + provenance) and private/custom registries
   (token auth via GitHub Actions secret). Composes with
-  /release-solo-npm and the npm-trust CLI.
+  /solo-npm:release and the npm-trust CLI.
 ---
 
 # Init Solo NPM
@@ -18,7 +18,7 @@ You have an existing repo and want to add the opinionated solo-AI-dev
 release workflow: tag-triggered CI publishing with one
 `AskUserQuestion` approval gate, OIDC + SLSA provenance for public
 npm, or token-based auth for private/custom registries. Run this skill
-once; then `/release-solo-npm` works out of the box.
+once; then `/solo-npm:release` works out of the box.
 
 ## How it works
 
@@ -49,8 +49,8 @@ Read every signal that affects the plan. No writes.
 | `.github/workflows/*.yml` | filenames + content | Skip release.yml if exists; ci.yml awareness |
 | `pnpm-workspace.yaml` / `package.json#workspaces` | presence | Single-package vs. monorepo |
 | `git remote get-url origin` | URL | `<REPO_SLUG>` placeholder inference |
-| `.claude/skills/release-solo-npm/` | presence | Whether to suggest re-install |
-| `.claude/skills/npm-trust-setup/` | presence | Whether to suggest install |
+| `.claude/skills/release/` | presence | Whether to suggest re-install |
+| `.claude/skills/setup/` | presence | Whether to suggest install |
 
 ## Phase B — Plan + ONE `AskUserQuestion`
 
@@ -231,9 +231,9 @@ auth tokens (those live in `NODE_AUTH_TOKEN` env / GitHub secrets).
 If `.npmrc` already exists, leave existing lines untouched and append
 the scope mapping if not present.
 
-### `release-solo-npm` skill placeholders
+### `solo-npm:release` skill placeholders
 
-If `.claude/skills/release-solo-npm/SKILL.md` exists with
+If `.claude/skills/release/SKILL.md` exists with
 placeholders, fill them with detected values:
 
 - `<PACKAGE_NAME>` → from `package.json#name`
@@ -241,20 +241,14 @@ placeholders, fill them with detected values:
 - `<RELEASE_WORKFLOW>` → `release.yml`
 
 If the skill is not yet installed (no
-`.claude/skills/release-solo-npm/`), Phase D's next-steps prints the
+`.claude/skills/release/`), Phase D's next-steps prints the
 `/plugin install` command.
 
-### Strip blocks per detected layout
+### Strip the monorepo block per detected layout
 
-After filling placeholders, strip blocks that don't apply:
-
-- **Single-package**: remove the monorepo block from
-  `release-solo-npm/SKILL.md` (clearly delimited in the template).
-- **No separate `ci.yml`**: remove the Phase C.4.5 ci.yml gating block.
-
-For **monorepos**: keep the monorepo block. For repos that have a
-separate `ci.yml` workflow with verification gates not in
-`release.yml`: keep Phase C.4.5.
+For **single-package** repos, remove the monorepo block from
+`release/SKILL.md` (clearly delimited in the template). For
+**monorepos**, keep the monorepo block.
 
 ### `CONTRIBUTING.md` (optional)
 
@@ -287,11 +281,11 @@ that's expected — surface the secret name to the user as a reminder.
 Init done. Next steps:
 
 1. pnpm add -D npm-trust   (if not already a devDep)
-2. pnpm exec npm-trust --init-skill npm-trust-setup
+2. pnpm exec npm-trust --init-skill setup
 3. If <PACKAGE_NAME> isn't on npm yet (first publish):
    - npm publish --provenance=false --access public   (one-time, web 2FA)
-   - Then run /npm-trust-setup to enable OIDC trust
-4. From here on: /release-solo-npm
+   - Then run /npm-trust:setup to enable OIDC trust
+4. From here on: /solo-npm:release
 ```
 
 **Private path**:
@@ -305,7 +299,7 @@ Init done. Next steps:
 3. If <PACKAGE_NAME> isn't on the registry yet:
    - Configure registry auth locally (~/.npmrc or env)
    - npm publish   (first publish from local; provenance N/A)
-4. From here on: /release-solo-npm
+4. From here on: /solo-npm:release
 ```
 
 ## Phase E (optional) — run common next steps
@@ -315,14 +309,14 @@ After Phase D's checklist, optionally call `AskUserQuestion`:
 - header: `"Continue"`
 - options:
   1. `Run pnpm add -D npm-trust` — execute the install now
-  2. `Install npm-trust-setup skill` — run `pnpm exec npm-trust
-     --init-skill npm-trust-setup`
+  2. `Install setup skill` — run `pnpm exec npm-trust
+     --init-skill setup`
   3. `Both` — run both
   4. `Just print, I'll run them` — finish silently
 
 ## Idempotency contract
 
-Running `/init-solo-npm` against an already-configured repo MUST be a
+Running `/solo-npm:init` against an already-configured repo MUST be a
 no-op (zero diff) for these artifacts:
 
 - `package.json#engines.node` (if `>=24`)
@@ -338,7 +332,7 @@ skipped in Phase B's plan summary.
 
 ## What this skill does NOT do
 
-- Does NOT enable OIDC trust — that's `/npm-trust-setup`'s job.
+- Does NOT enable OIDC trust — that's `/npm-trust:setup`'s job.
 - Does NOT do the first publish — chicken-and-egg requires a one-time
   classic publish from local. Phase D's checklist documents this.
 - Does NOT touch `.git/`, `~/.npmrc`, GitHub repo settings, or

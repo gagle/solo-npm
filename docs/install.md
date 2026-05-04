@@ -1,4 +1,4 @@
-# Installing release-solo-npm
+# Installing solo-npm
 
 Step-by-step install + customization guide.
 
@@ -7,35 +7,44 @@ Step-by-step install + customization guide.
 In Claude Code:
 
 ```
-/plugin marketplace add gagle/release-solo-npm
-/plugin install release-solo-npm@gllamas-skills
+/plugin marketplace add gagle/solo-npm
+/plugin install solo-npm@gllamas-skills
 ```
 
 This installs three skills into your repo's `.claude/skills/`:
 
-- `init-solo-npm/SKILL.md` — one-shot scaffolder for fresh repos
-- `release-solo-npm/SKILL.md` — the canonical `/release-solo-npm` skill
-- `verify-solo-npm/SKILL.md` — a default `/verify-solo-npm` skill
+- `init/SKILL.md` — one-shot scaffolder for fresh repos
+- `release/SKILL.md` — the canonical `/solo-npm:release` skill
+- `verify/SKILL.md` — a default `/solo-npm:verify` skill
 
-## 2. (Easy path) Run `/init-solo-npm` to scaffold everything
+The same marketplace also hosts the sibling `npm-trust` plugin
+(OIDC trust setup wizard):
+
+```
+/plugin install npm-trust@gllamas-skills
+```
+
+After install, `/npm-trust:setup` is available.
+
+## 2. (Easy path) Run `/solo-npm:init` to scaffold everything
 
 If your repo doesn't already have `release.yml` + `publishConfig` +
 `engines.node` + `.nvmrc` + the `npm-trust:setup` script, run
-`/init-solo-npm` once. It detects current state, asks one
+`/solo-npm:init` once. It detects current state, asks one
 `AskUserQuestion`, and scaffolds only what's missing. Idempotent.
 Supports public npm AND private/custom registries.
 
 ```
-/init-solo-npm
+/solo-npm:init
 ```
 
-After `/init-solo-npm` finishes, the printed checklist covers the
+After `/solo-npm:init` finishes, the printed checklist covers the
 last manual steps (devDep install, OIDC trust setup or GitHub secret
 config). Then jump to step 4.
 
-## 3. (Manual path) Edit the placeholders in `release-solo-npm/SKILL.md`
+## 3. (Manual path) Edit the placeholders in `release/SKILL.md`
 
-Open `.claude/skills/release-solo-npm/SKILL.md` and find the
+Open `.claude/skills/release/SKILL.md` and find the
 **Placeholders** table near the top. Replace each placeholder
 throughout the file:
 
@@ -53,10 +62,10 @@ If your repo is a **monorepo**, keep the monorepo block and replace
 `<MAIN_PACKAGE_DIR>` with the path to the package whose version is
 canonical (e.g., `packages/core`).
 
-## 4. Customize `verify-solo-npm/SKILL.md` if needed
+## 4. Customize `verify/SKILL.md` if needed
 
-The default `/verify-solo-npm` skill runs lint + test + build. Edit
-`.claude/skills/verify-solo-npm/SKILL.md` to add anything else your
+The default `/solo-npm:verify` skill runs lint + test + build. Edit
+`.claude/skills/verify/SKILL.md` to add anything else your
 stack needs:
 
 - `pnpm test:e2e` for e2e tests
@@ -75,33 +84,33 @@ Make sure you have:
   the trust setup wizard:
   ```
   pnpm add -D npm-trust
-  pnpm exec npm-trust --init-skill npm-trust-setup
+  pnpm exec npm-trust --init-skill setup
   ```
-  Then invoke `/npm-trust-setup` in Claude Code.
+  Then invoke `/npm-trust:setup` in Claude Code.
 
 ## 6. Run the skill
 
 In Claude Code, type:
 
 ```
-/release-solo-npm
+/solo-npm:release
 ```
 
 The skill walks through:
 
 1. **Phase A**: pre-flight (silent if green)
 2. **Phase B**: shows the plan, asks **one** structured question
-3. **Phase C**: executes (commit, tag, push, watch CI, verify on registry)
+3. **Phase C**: executes (commit, tag, push, verify on registry)
 
 ## Troubleshooting
 
 - **`PACKAGE_NOT_PUBLISHED` from doctor**: your package isn't on npm
   yet. See the
-  [first-publish ceremony](https://github.com/gagle/npm-trust/blob/main/docs/bootstrap.md#5-first-publish--the-chicken-and-egg)
-  in the npm-trust docs.
+  [first-publish ceremony](https://github.com/gagle/npm-trust#first-publish-chicken-and-egg)
+  in the npm-trust README.
 - **`REGISTRY_PROVENANCE_CONFLICT`**: `publishConfig.registry` points
   at a custom URL but `provenance: true` is set. Either remove
   provenance (custom registries can't sign with Sigstore) or change
   the registry back to public npm.
 - **CI fails on tag push**: the publish workflow likely needs OIDC
-  trust to be configured. Run the `/npm-trust-setup` wizard first.
+  trust to be configured. Run the `/npm-trust:setup` wizard first.

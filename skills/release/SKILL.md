@@ -1,11 +1,11 @@
 ---
-name: release-solo-npm
+name: release
 description: >
   Designed for AI-driven solo dev. Tag-triggered npm release with OIDC
   provenance and ONE human approval — that's the only place a human is
   in the loop, and it's a structured selector, not a free-text prompt.
   Three phases: pre-flight (silent if green), plan (one AskUserQuestion),
-  execute (silent through verification). Composes with /verify-solo-npm.
+  execute (silent through verification). Composes with /solo-npm:verify.
   Supports pre-release versions, public + custom registries,
   single-package + monorepo.
 ---
@@ -26,7 +26,7 @@ review code, no second pair of human eyes. You want releases that are:
 
 This skill drives the whole flow end-to-end with **one** human
 checkpoint (a structured `AskUserQuestion` selector — unmissable,
-unmistakable). Type `/release-solo-npm`, review the plan once, click `Proceed`,
+unmistakable). Type `/solo-npm:release`, review the plan once, click `Proceed`,
 get a notification when the tarball is on npm with provenance.
 
 ## How it works
@@ -52,9 +52,9 @@ in your repo's specifics:
 | `<RELEASE_WORKFLOW>` | `release.yml` | doctor's `--workflow` filter |
 | `<MAIN_PACKAGE_DIR>` | `packages/core` | (Monorepo) where the canonical version lives |
 | Monorepo block | (delete if single-package) | iterate `packages/*` |
-| `<LINT_CMD>` | `pnpm run lint` | fallback when `/verify-solo-npm` skill not installed |
-| `<TEST_CMD>` | `pnpm test` | fallback when `/verify-solo-npm` skill not installed |
-| `<BUILD_CMD>` | `pnpm run build` | fallback when `/verify-solo-npm` skill not installed |
+| `<LINT_CMD>` | `pnpm run lint` | fallback when `/solo-npm:verify` skill not installed |
+| `<TEST_CMD>` | `pnpm test` | fallback when `/solo-npm:verify` skill not installed |
+| `<BUILD_CMD>` | `pnpm run build` | fallback when `/solo-npm:verify` skill not installed |
 
 ## Phase A — Pre-flight
 
@@ -67,9 +67,9 @@ git status --porcelain
 If non-empty, **STOP**. Tell the user to commit or stash first. Do not
 proceed.
 
-### A.2 Run /verify-solo-npm
+### A.2 Run /solo-npm:verify
 
-Invoke the `/verify-solo-npm` skill. (If `/verify-solo-npm` is not installed, fall back
+Invoke the `/solo-npm:verify` skill. (If `/solo-npm:verify` is not installed, fall back
 to running `<LINT_CMD> && <TEST_CMD> && <BUILD_CMD>` inline.)
 
 If verification fails, **STOP** and surface the error.
@@ -262,46 +262,12 @@ git push
 
 ### C.4 Final pre-tag verification
 
-Re-invoke `/verify-solo-npm` against the bumped state. Aborts here are rare but
+Re-invoke `/solo-npm:verify` against the bumped state. Aborts here are rare but
 not hypothetical (e.g., a test that depends on `package.json#version`).
 
 If anything fails, **STOP**. Recovery: fix the issue, restart from
 Phase A. The release commit is on origin but no tag has been pushed
 yet, so the workflow won't run.
-
-### C.4.5 Wait for `ci.yml` to go green on the pushed commit
-
-> **Optional block — strip if your repo has no separate `ci.yml`
-> workflow that runs on push to `main`.**
->
-> Keep this block if any of these are true:
->
-> - Your `ci.yml` runs a **Node version matrix** that `release.yml`
->   doesn't (so ci.yml catches multi-version regressions before tag).
-> - Your `ci.yml` runs **e2e tests** that need credentials/secrets and
->   you want to verify them remotely before tagging.
-> - Your defense-in-depth model says "tag means CI green" — this is
->   what makes that true.
-
-After pushing the commit at C.3 and confirming local `/verify-solo-npm` at C.4,
-wait for `ci.yml` on the **just-pushed commit** to complete green
-(commit-specific lookup, robust against races with concurrent pushes):
-
-```bash
-COMMIT_SHA=$(git rev-parse HEAD)
-# Wait briefly for GitHub Actions to register the run
-for _ in 1 2 3 4 5; do
-  RUN_ID=$(gh run list --commit "$COMMIT_SHA" --workflow=ci.yml \
-           --json databaseId --jq '.[0].databaseId')
-  [ -n "$RUN_ID" ] && break
-  sleep 5
-done
-gh run watch "$RUN_ID" --exit-status
-```
-
-If `ci.yml` fails, **STOP**. Recovery: fix the issue, restart from
-Phase A. The release commit is on origin but no tag is pushed yet, so
-nothing is published to npm.
 
 ### C.5 Tag and push the tag
 
@@ -375,7 +341,7 @@ End the skill.
 | Failure | Where | Recovery |
 |---|---|---|
 | Working tree dirty | A.1 | User commits or stashes; restart from A.1 |
-| `/verify-solo-npm` fails | A.2, C.4 | Fix the issue; restart from A.1 |
+| `/solo-npm:verify` fails | A.2, C.4 | Fix the issue; restart from A.1 |
 | Doctor `summary.fail > 0` | A.3 | Fix the underlying environment issue (e.g., upgrade Node); restart |
 | Network failure on doctor | A.3 | Retry after restoring network; restart from A.1 |
 | User says `Abort` | B.5 | No state changes; end |

@@ -1,10 +1,10 @@
 ---
-name: verify-solo-npm
+name: verify
 description: >
   Run lint, test, and build to confirm a change is ready to ship.
   Default commands target a typical pnpm-based TypeScript repo.
   Customize for your stack — add e2e steps, coverage thresholds, etc.
-  Other skills (especially /release-solo-npm) call this in their
+  Other skills (especially /solo-npm:release) call this in their
   pre-flight phase.
 ---
 
@@ -42,10 +42,10 @@ This skill ships with sensible defaults. Edit it to match your stack:
 
 ## When this skill is called
 
-- **Manually**: invoke `/verify-solo-npm` after a change to confirm
+- **Manually**: invoke `/solo-npm:verify` after a change to confirm
   it's ready.
-- **Automatically**: `/release-solo-npm` calls this in Phase A.2
+- **Automatically**: `/solo-npm:release` calls this in Phase A.2
   (pre-flight) and Phase C.4 (post-bump verification).
 
-As long as `/verify-solo-npm` returns `VERIFY_OK` for a clean state,
+As long as `/solo-npm:verify` returns `VERIFY_OK` for a clean state,
 downstream skills proceed.

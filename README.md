@@ -1,4 +1,4 @@
-<h1 align="center">release-solo-npm</h1>
+<h1 align="center">solo-npm</h1>
 
 <p align="center">
   Tag-triggered npm releases with one approval, for AI-driven solo dev.
@@ -29,11 +29,11 @@ A Claude Code skill that drives the entire release end-to-end:
 
 | Phase | What happens | Human input |
 |---|---|---|
-| **A. Pre-flight** | `/verify-solo-npm` (lint + test + build) → `npm-trust --doctor` | none (silent if green) |
+| **A. Pre-flight** | `/solo-npm:verify` (lint + test + build) → `npm-trust --doctor` | none (silent if green) |
 | **B. Plan** | Detect bump, render summary, **one** `AskUserQuestion` selector | one click: Proceed / Override / Edit changelog / Abort |
 | **C. Execute** | Bump → commit → push → tag → watch CI → verify on registry | none |
 
-Type `/release-solo-npm`. Review the plan once. Click `Proceed`. Get
+Type `/solo-npm:release`. Review the plan once. Click `Proceed`. Get
 a notification when the tarball is on npm with provenance. That's it.
 
 ## Why this works for solo / agent-driven dev
@@ -42,33 +42,43 @@ a notification when the tarball is on npm with provenance. That's it.
   agent ran locally; SLSA provenance proves what was published.
 - **One structured approval gate.** Not a free-text "yes/no" prompt
   (those are easy to miss). A clearly-labeled selector — unmissable.
-- **Composable.** `/verify-solo-npm` is its own skill. Customize it
+- **Composable.** `/solo-npm:verify` is its own skill. Customize it
   (add e2e, coverage thresholds, license audits) without touching
-  `/release-solo-npm`.
+  `/solo-npm:release`.
 - **No special cases.** Every release follows the same path. The
   "small fix" and "big feature" both go through Phase A → B → C.
 
 ## Install
 
 ```
-/plugin marketplace add gagle/release-solo-npm
-/plugin install release-solo-npm@gllamas-skills
+/plugin marketplace add gagle/solo-npm
+/plugin install solo-npm@gllamas-skills
 ```
 
-This installs three skills into Claude Code: `/init-solo-npm`,
-`/release-solo-npm`, and `/verify-solo-npm`.
+This installs three skills into Claude Code: `/solo-npm:init`,
+`/solo-npm:release`, and `/solo-npm:verify`.
 
-## Initializing a fresh repo with `/init-solo-npm`
+The marketplace also hosts the sibling [`npm-trust`](https://github.com/gagle/npm-trust)
+plugin (OIDC trust setup wizard). Install it the same way:
+
+```
+/plugin install npm-trust@gllamas-skills
+```
+
+This makes `/npm-trust:setup` available without needing to clone the
+skill into your repo's `.claude/skills/`.
+
+## Initializing a fresh repo with `/solo-npm:init`
 
 Going from "I have a repo" to "the release skill works out of the
 box" used to mean manually scaffolding `release.yml`, `publishConfig`,
 `engines.node`, `.nvmrc`, the `npm-trust:setup` script, etc.
-`/init-solo-npm` does all that with one approval gate.
+`/solo-npm:init` does all that with one approval gate.
 
 ```
 cd path/to/your/repo
 # in Claude Code:
-/init-solo-npm
+/solo-npm:init
 ```
 
 The skill detects existing repo state, shows you the diff it'll
@@ -77,13 +87,13 @@ missing. Idempotent — safe to run multiple times. Supports both
 public npm (OIDC + provenance) and private/custom registries (token
 auth via GitHub Actions secret).
 
-After `/init-solo-npm` finishes, the printed checklist covers the
+After `/solo-npm:init` finishes, the printed checklist covers the
 remaining manual steps (devDep install, OIDC trust setup or GitHub
-secret config). Then `/release-solo-npm` works.
+secret config). Then `/solo-npm:release` works.
 
 ## Prerequisites
 
-If you used `/init-solo-npm`, prerequisites are taken care of. If
+If you used `/solo-npm:init`, prerequisites are taken care of. If
 you're configuring manually:
 
 - A tag-triggered `release.yml` workflow that publishes via
@@ -91,14 +101,14 @@ you're configuring manually:
   `package.json`.
 - OIDC trust configured for the package (one-time setup via
   [`gagle/npm-trust`](https://github.com/gagle/npm-trust) and the
-  bundled `npm-trust-setup` skill). Skip this for private/custom
+  bundled `/npm-trust:setup` skill). Skip this for private/custom
   registries — they use token auth instead.
 - Conventional commit messages (`feat:`, `fix:`, etc.) since the
   release skill parses them to compute the version bump.
 
 ## Configuration
 
-After install, edit `.claude/skills/release-solo-npm/SKILL.md` to fill
+After install, edit `.claude/skills/release/SKILL.md` to fill
 in the placeholders for your repo:
 
 | Placeholder | Example | What it controls |
@@ -107,9 +117,9 @@ in the placeholders for your repo:
 | `<REPO_SLUG>` | `gagle/rfc-bcp47` | compare URLs in CHANGELOG |
 | `<RELEASE_WORKFLOW>` | `release.yml` | doctor's `--workflow` filter |
 | Monorepo block | (delete if single-package) | iterate `packages/*` |
-| `<LINT_CMD>`, `<TEST_CMD>`, `<BUILD_CMD>` | `pnpm run lint`, `pnpm test`, `pnpm run build` | Fallbacks if `/verify-solo-npm` isn't installed |
+| `<LINT_CMD>`, `<TEST_CMD>`, `<BUILD_CMD>` | `pnpm run lint`, `pnpm test`, `pnpm run build` | Fallbacks if `/solo-npm:verify` isn't installed |
 
-Customize `.claude/skills/verify-solo-npm/SKILL.md` for your stack —
+Customize `.claude/skills/verify/SKILL.md` for your stack —
 add e2e, coverage gates, typecheck, whatever.
 
 ## Pre-release versions
@@ -192,16 +202,16 @@ NEVER commit a literal `_authToken=...` line in `.npmrc`. The token
 belongs in env / repo secrets only. `npm-trust --doctor` flags this
 as `NPMRC_LITERAL_TOKEN`.
 
-### `/init-solo-npm` handles both
+### `/solo-npm:init` handles both
 
-If you start with `/init-solo-npm`, the skill detects whether
+If you start with `/solo-npm:init`, the skill detects whether
 `publishConfig.registry` (or `.npmrc`) already points at a custom
 registry and picks the right `release.yml` template + omits
 `provenance: true`. You don't have to remember any of the above.
 
 ## Monorepos
 
-The bundled `release-solo-npm/SKILL.md` ships with a monorepo block.
+The bundled `release/SKILL.md` ships with a monorepo block.
 Single-package repos delete it after install. Monorepos keep it;
 Phase C iterates `packages/*` for the version bump and per-package
 registry verification.

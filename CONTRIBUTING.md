@@ -1,4 +1,4 @@
-# Contributing to release-solo-npm
+# Contributing to solo-npm
 
 This project is developed and maintained entirely through AI-assisted
 development using [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
@@ -7,9 +7,9 @@ generated, reviewed, and verified by Claude.
 
 **Pull requests are disabled.** Contributors cannot submit code
 directly. To request a change,
-[open an issue](https://github.com/gagle/release-solo-npm/issues)
+[open an issue](https://github.com/gagle/solo-npm:release/issues)
 or start a
-[discussion](https://github.com/gagle/release-solo-npm/discussions);
+[discussion](https://github.com/gagle/solo-npm:release/discussions);
 the maintainer picks it up and implements it through Claude Code
 following the conventions in `CLAUDE.md` (when added) and
 `.claude/`.
@@ -24,10 +24,10 @@ every time.
 
 ## How to request a change
 
-1. **[Open an issue](https://github.com/gagle/release-solo-npm/issues)**
+1. **[Open an issue](https://github.com/gagle/solo-npm:release/issues)**
    for bugs, concrete features, or specific improvements — include
    expected behavior and reproduction steps where relevant.
-2. **[Open a discussion](https://github.com/gagle/release-solo-npm/discussions)**
+2. **[Open a discussion](https://github.com/gagle/solo-npm:release/discussions)**
    for open-ended requests, design input, or trade-off questions.
 3. The maintainer triages the request and, when accepted, implements
    it via Claude Code. The resulting commits are linked back to your
@@ -38,13 +38,13 @@ every time.
 - **Conventional commits** (`feat:`, `fix:`, `chore:`, etc.).
 - **Skill content discipline**: every change to `skills/*/SKILL.md`
   preserves the `name`/`description` frontmatter contract and the
-  three-phase shape for `/release-solo-npm`.
+  three-phase shape for `/solo-npm:release`.
 - **Marketplace plugin compatibility**: changes to `.claude-plugin/`
   manifests are validated against the Claude Code marketplace spec.
 - **AI-only contribution model**: PRs disabled at the GitHub level.
 
 ## Questions
 
-Open a [GitHub Discussion](https://github.com/gagle/release-solo-npm/discussions)
+Open a [GitHub Discussion](https://github.com/gagle/solo-npm:release/discussions)
 for questions about the project, its architecture, or this
 contribution model.
