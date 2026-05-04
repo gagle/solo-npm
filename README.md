@@ -315,16 +315,25 @@ or discussion for change requests.
 
 ### Dogfooding
 
-To test changes locally without going through the marketplace install:
+To test changes locally without going through the marketplace install,
+launch Claude Code with `--plugin-dir`:
 
 ```bash
 cd ~/projects/solo-npm
 claude --plugin-dir .
 ```
 
-Inside that session, all `/solo-npm:*` invocations resolve to your
-local source. Each new skill or change in `skills/<name>/SKILL.md`
-takes effect after `/reload-plugins`.
+Inside that session, all skills load **with the `solo-npm:` namespace**
+— `/help` shows `/solo-npm:release`, `/solo-npm:deps`, etc., matching
+what consumers see. Each change to `skills/<name>/SKILL.md` takes
+effect after `/reload-plugins`.
+
+This repo deliberately has no `.claude/` directory: project-local
+`.claude/skills/<name>/` would load skills without the namespace
+(`/release` instead of `/solo-npm:release`), which would diverge from
+the consumer install experience. `--plugin-dir .` is the canonical
+dogfood path. See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for
+details.
 
 ## See also
 

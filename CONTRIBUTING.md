@@ -49,23 +49,47 @@ every time.
 
 ## Dogfooding
 
-To test changes locally without going through the marketplace install:
+To test changes locally without going through the marketplace install,
+launch Claude Code with `--plugin-dir` pointing at this repo:
 
 ```bash
 cd ~/projects/solo-npm
 claude --plugin-dir .
 ```
 
-In that session, all `/solo-npm:*` invocations resolve to your local
-source. Each new skill or change in `skills/<name>/SKILL.md` takes
-effect after `/reload-plugins` (no need to restart the Claude Code
-session).
+In that session, all skills load **as plugin skills with the
+`solo-npm:` namespace** — so `/help` shows `/solo-npm:init`,
+`/solo-npm:release`, `/solo-npm:status`, etc. Each change to
+`skills/<name>/SKILL.md` takes effect after `/reload-plugins` (no need
+to restart the session).
 
-The repo also keeps `.claude/skills/<name>` symlinks that target
-`skills/<name>` — these expose bare invocations (`/release`,
-`/verify`, etc.) when Claude Code is launched without `--plugin-dir`.
-Use `--plugin-dir .` to test the namespaced (`/solo-npm:release`)
-flow.
+> **Why `--plugin-dir .` and not `.claude/skills/` symlinks?**
+> Project-local skills (`.claude/skills/<name>/SKILL.md`) load **without**
+> the plugin namespace prefix — they'd show as bare `/release`, `/deps`,
+> etc. We want the namespaced invocation in dogfood sessions to match
+> what end users see, so this repo deliberately has no `.claude/`
+> directory. The `--plugin-dir .` flag is the canonical way to load a
+> plugin source as a plugin during development.
+
+To verify the install path that consumers will use, paste this snippet
+into a throwaway repo's `.claude/settings.json` and trust the folder:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "gllamas-skills": {
+      "source": { "source": "github", "repo": "gagle/solo-npm" }
+    }
+  },
+  "enabledPlugins": {
+    "solo-npm@gllamas-skills": true
+  }
+}
+```
+
+Claude Code will prompt to install the marketplace + plugin; accept
+both. After `/reload-plugins`, the seven `/solo-npm:*` invocations
+resolve.
 
 ## Adding a new skill
 
@@ -73,16 +97,16 @@ When adding a skill to the plugin:
 
 1. Create `skills/<name>/SKILL.md` with frontmatter `name: <name>` and
    a tight `description` (under ~200 chars; Claude truncates).
-2. Add a dogfood symlink: `ln -s ../../skills/<name>
-   .claude/skills/<name>`.
-3. Update `.claude-plugin/plugin.json#description` to mention the new
+2. Update `.claude-plugin/plugin.json#description` to mention the new
    skill.
-4. Update `marketplace.json#plugins[0].description` if it lists skill
+3. Update `marketplace.json#plugins[0].description` if it lists skill
    names by category.
-5. Add a section to `README.md` under the matching lifecycle category.
-6. If the skill has a daily-use cadence (like `release`/`verify`),
+4. Add a section to `README.md` under the matching lifecycle category.
+5. If the skill has a daily-use cadence (like `release`/`verify`),
    consider whether it deserves a consumer wrapper template — and update
    `skills/init/SKILL.md` to scaffold it.
+6. Test with `claude --plugin-dir .` and verify `/solo-npm:<name>`
+   appears in `/help`.
 
 ## Questions
 
