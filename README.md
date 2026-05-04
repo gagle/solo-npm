@@ -17,6 +17,20 @@ Seven slash commands that take an empty repo to a tag-triggered OIDC release flo
 
 ---
 
+## Why solo-npm?
+
+You're a solo developer — or running a small group of LLM agents — shipping npm packages. PRs are disabled in your repos (issue/discussion contribution model only). There's no committee, no second pair of human eyes.
+
+Existing release tooling is built for teams: PR-based workflows, multi-stage approvals, complex changelog negotiation. In a solo or agent-driven context that overhead becomes friction — and friction makes you skip steps when you're moving fast. Skipped steps make unsigned, unverified, opaque releases.
+
+solo-npm replaces that friction with **one structured `AskUserQuestion` checkpoint per release** and silent automation everywhere else. The skills bake in opinionated defaults — SLSA provenance attestation, OIDC Trusted Publishing, conventional-commit-driven version bumps, verify-gated dep upgrades — so you can't accidentally ship something untested or unsigned.
+
+Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) replace the morning ritual of opening five browser tabs to check on your portfolio. One terminal command per concern.
+
+Tools used under the hood: [`npm-trust`](https://github.com/gagle/npm-trust) (CLI for OIDC trust config), [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) (monorepo dist translation, optional).
+
+---
+
 ## Commands
 
 7 namespaced slash commands map to the publishing lifecycle. Each one is opinionated, idempotent, and verify-gated.
@@ -212,32 +226,6 @@ One human checkpoint. Everything else is silent if green.
 
 ---
 
-## Project structure
-
-```
-solo-npm/
-├── .claude-plugin/
-│   ├── plugin.json           # plugin manifest
-│   └── marketplace.json      # marketplace catalog (gllamas-skills)
-├── .claude/
-│   └── commands/             # 7 plugin commands (each → /solo-npm:<name>)
-│       ├── init.md           #   Bootstrap
-│       ├── trust.md          #   Bootstrap (OIDC)
-│       ├── verify.md         #   Per release (quality gates)
-│       ├── release.md        #   Per release (tag-triggered)
-│       ├── status.md         #   Operate (dashboard)
-│       ├── audit.md          #   Operate (security)
-│       └── deps.md           #   Operate (upgrades)
-├── docs/
-│   └── install.md            # detailed install + bootstrap guide
-├── README.md
-├── CONTRIBUTING.md
-├── CHANGELOG.md
-└── LICENSE
-```
-
----
-
 ## Advanced
 
 <details>
@@ -313,20 +301,6 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for details.
 
 ---
 
-## Why solo-npm?
-
-You're a solo developer — or running a small group of LLM agents — shipping npm packages. PRs are disabled in your repos (issue/discussion contribution model only). There's no committee, no second pair of human eyes.
-
-Existing release tooling is built for teams: PR-based workflows, multi-stage approvals, complex changelog negotiation. In a solo or agent-driven context that overhead becomes friction — and friction makes you skip steps when you're moving fast. Skipped steps make unsigned, unverified, opaque releases.
-
-solo-npm replaces that friction with **one structured `AskUserQuestion` checkpoint per release** and silent automation everywhere else. The skills bake in opinionated defaults — SLSA provenance attestation, OIDC Trusted Publishing, conventional-commit-driven version bumps, verify-gated dep upgrades — so you can't accidentally ship something untested or unsigned.
-
-Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) replace the morning ritual of opening five browser tabs to check on your portfolio. One terminal command per concern.
-
-Tools used under the hood: [`npm-trust`](https://github.com/gagle/npm-trust) (CLI for OIDC trust config), [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) (monorepo dist translation, optional).
-
----
-
 ## See also
 
 - [`gagle/npm-trust`](https://github.com/gagle/npm-trust) — pure CLI for npm OIDC Trusted Publishing. The `/solo-npm:trust` and `/solo-npm:audit` commands orchestrate this CLI.
@@ -337,7 +311,3 @@ Tools used under the hood: [`npm-trust`](https://github.com/gagle/npm-trust) (CL
 ## Contributing
 
 This project follows an AI-only contribution model — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). PRs are disabled. Open an issue or discussion for change requests.
-
-## License
-
-MIT — use freely.
