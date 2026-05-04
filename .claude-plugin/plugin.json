@@ -1,9 +1,10 @@
 {
   "name": "solo-npm",
-  "description": "Seven skills for AI-driven solo-dev npm publishing — covering the full lifecycle. Bootstrap: /solo-npm:init scaffolds release.yml + publishConfig + .nvmrc + consumer wrappers + .claude/settings.json (idempotent); /solo-npm:trust configures OIDC Trusted Publishing across packages via the npm-trust CLI. Per-release: /solo-npm:release drives tag-triggered publishing with one approval gate; /solo-npm:verify runs lint + typecheck + test + build. Portfolio operations: /solo-npm:status shows a one-page dashboard; /solo-npm:audit runs security audit with risk triage; /solo-npm:deps orchestrates dep upgrades with verify gates. Release and verify are designed to be wrapped per-repo via .claude/skills/<name>/SKILL.md thin wrappers.",
-  "version": "0.5.0",
+  "description": "Seven slash commands for AI-driven solo-dev npm publishing — covering the full lifecycle. Bootstrap: /solo-npm:init scaffolds release.yml + publishConfig + .nvmrc + consumer wrappers + .claude/settings.json (idempotent); /solo-npm:trust configures OIDC Trusted Publishing across packages via the npm-trust CLI. Per-release: /solo-npm:release drives tag-triggered publishing with one approval gate; /solo-npm:verify runs lint + typecheck + test + build. Portfolio operations: /solo-npm:status shows a one-page dashboard; /solo-npm:audit runs security audit with risk triage; /solo-npm:deps orchestrates dep upgrades with verify gates. /solo-npm:release and /solo-npm:verify are designed to be wrapped per-repo via .claude/skills/<name>/SKILL.md thin wrappers.",
+  "version": "0.5.1",
   "author": { "name": "gllamas" },
   "homepage": "https://github.com/gagle/solo-npm",
   "repository": "https://github.com/gagle/solo-npm",
-  "license": "MIT"
+  "license": "MIT",
+  "commands": "./.claude/commands"
 }

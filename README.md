@@ -323,17 +323,19 @@ cd ~/projects/solo-npm
 claude --plugin-dir .
 ```
 
-Inside that session, all skills load **with the `solo-npm:` namespace**
+Inside that session, all commands load **with the `solo-npm:` namespace**
 — `/help` shows `/solo-npm:release`, `/solo-npm:deps`, etc., matching
-what consumers see. Each change to `skills/<name>/SKILL.md` takes
+what consumers see. Each change to `.claude/commands/<name>.md` takes
 effect after `/reload-plugins`.
 
-This repo deliberately has no `.claude/` directory: project-local
-`.claude/skills/<name>/` would load skills without the namespace
-(`/release` instead of `/solo-npm:release`), which would diverge from
-the consumer install experience. `--plugin-dir .` is the canonical
-dogfood path. See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for
-details.
+The plugin entries live in `.claude/commands/<name>.md` (flat markdown
+files), not `skills/<name>/SKILL.md` (folder-per-skill). Both forms
+work the same way per the Claude Code docs, but **plugin commands**
+display as `/<plugin>:<name>` literally in the autocomplete dropdown
+while **plugin skills** display as `/<name> (<plugin>)`. We use the
+commands form to match `addyosmani/agent-skills`'s DX.
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for details.
 
 ## See also
 

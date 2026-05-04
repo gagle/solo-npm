@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.5.1 — Move skills → commands for namespaced autocomplete
+
+Claude Code's autocomplete renders **plugin commands** (in `.claude/commands/`)
+as `/<plugin>:<name>` literally in the dropdown — exactly the
+`/agent-skills:spec` style of `addyosmani/agent-skills`. Plugin **skills**
+(in `skills/<name>/SKILL.md`) render as `/<name> (<plugin>)` in the
+dropdown — same canonical invocation, different display.
+
+This release relocates the 7 entries from `skills/<name>/SKILL.md` to
+`.claude/commands/<name>.md` so they show up as `/solo-npm:init`,
+`/solo-npm:release`, etc. in the autocomplete dropdown — matching
+addyosmani's DX.
+
+- Moved `skills/init/SKILL.md` → `.claude/commands/init.md`
+- Moved `skills/release/SKILL.md` → `.claude/commands/release.md`
+- Moved `skills/verify/SKILL.md` → `.claude/commands/verify.md`
+- Moved `skills/trust/SKILL.md` → `.claude/commands/trust.md`
+- Moved `skills/status/SKILL.md` → `.claude/commands/status.md`
+- Moved `skills/audit/SKILL.md` → `.claude/commands/audit.md`
+- Moved `skills/deps/SKILL.md` → `.claude/commands/deps.md`
+- Removed empty `skills/` directory.
+- Added `"commands": "./.claude/commands"` to `.claude-plugin/plugin.json`.
+
+The functional behavior is identical (per Claude Code docs, "commands and
+skills work the same way" and "support the same frontmatter"). This is a
+pure display fix.
+
 ## v0.5.0 — Complete lifecycle plugin (7 skills)
 
 **Major restructure: solo-npm now owns the full AI-driven solo-dev npm

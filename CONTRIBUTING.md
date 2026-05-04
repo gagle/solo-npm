@@ -91,22 +91,31 @@ Claude Code will prompt to install the marketplace + plugin; accept
 both. After `/reload-plugins`, the seven `/solo-npm:*` invocations
 resolve.
 
-## Adding a new skill
+## Adding a new command
 
-When adding a skill to the plugin:
+When adding a command to the plugin:
 
-1. Create `skills/<name>/SKILL.md` with frontmatter `name: <name>` and
-   a tight `description` (under ~200 chars; Claude truncates).
+1. Create `.claude/commands/<name>.md` with frontmatter `description:
+   <one-liner>` (under ~200 chars; Claude truncates). The filename is
+   the command name; `name:` field is optional and defaults to the
+   filename.
 2. Update `.claude-plugin/plugin.json#description` to mention the new
-   skill.
-3. Update `marketplace.json#plugins[0].description` if it lists skill
-   names by category.
+   command.
+3. Update `marketplace.json#plugins[0].description` if it lists
+   commands by category.
 4. Add a section to `README.md` under the matching lifecycle category.
-5. If the skill has a daily-use cadence (like `release`/`verify`),
-   consider whether it deserves a consumer wrapper template — and update
-   `skills/init/SKILL.md` to scaffold it.
+5. If the command has a daily-use cadence (like `release`/`verify`),
+   consider whether it deserves a consumer wrapper template — and
+   update `.claude/commands/init.md` to scaffold it.
 6. Test with `claude --plugin-dir .` and verify `/solo-npm:<name>`
-   appears in `/help`.
+   appears in autocomplete.
+
+> **Why `.claude/commands/<name>.md` and not `skills/<name>/SKILL.md`?**
+> Both forms work the same way functionally per the Claude Code docs.
+> The difference is autocomplete display: plugin commands render as
+> `/<plugin>:<name>` literally in the dropdown, while plugin skills
+> render as `/<name> (<plugin>)`. We chose commands to match
+> `addyosmani/agent-skills`'s DX.
 
 ## Questions
 
