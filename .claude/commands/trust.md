@@ -115,7 +115,18 @@ Use the chosen source flag in every subsequent step. For `Use --scope` and
 git remote get-url origin
 ```
 
-Parse `owner/repo` from the URL, then call `AskUserQuestion` to confirm:
+Parse `owner/repo` from the URL.
+
+**Auto-confirm when unambiguous.** If the parse succeeds AND
+`--doctor`'s `repo.inferredSlug` matches the parsed value, use the
+slug silently — do NOT call `AskUserQuestion`. Skip to Step 3.
+
+Only prompt via `AskUserQuestion` if:
+- the parse fails or returns multiple candidates
+- the doctor flags `REPO_NO_REMOTE` or `REPO_REMOTE_NOT_GITHUB`
+- the parsed value disagrees with the doctor's inferred value
+
+When prompting:
 
 - `header`: `"GitHub repo"`
 - `question`: `"Use {inferred owner/repo} as the GitHub repo for OIDC trust?"`
@@ -126,21 +137,25 @@ Parse `owner/repo` from the URL, then call `AskUserQuestion` to confirm:
 
 ### 3. Resolve the publish workflow
 
-List candidate workflow files:
+If the parent skill (e.g., `/release`) passed `--workflow <name>`, use
+that value silently — skip this step.
+
+Otherwise, list candidate workflow files:
 
 ```bash
 ls .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null
 ```
 
-If exactly one file exists, use it without prompting. Otherwise call
-`AskUserQuestion`:
+**Auto-pick when unambiguous.** Apply this heuristic:
 
-- `header`: `"Workflow"`
-- `question`: `"Which workflow performs the npm publish?"`
-- options: one entry per candidate file (label is the basename, e.g.
-  `release.yml`). Cap at 4 options. If more than 4 candidates exist,
-  show the 3 most likely (any file containing `release`, `publish`, or
-  `npm` in the name) plus rely on the auto-`Other` choice for the rest.
+1. If exactly one workflow file exists → auto-pick it.
+2. If multiple files exist BUT exactly one contains `release`,
+   `publish`, or `npm` in its filename → auto-pick that.
+3. Otherwise (≥ 2 plausible candidates remain), call `AskUserQuestion`:
+   - `header`: `"Workflow"`
+   - `question`: `"Which workflow performs the npm publish?"`
+   - options: one entry per candidate file (label is the basename).
+     Cap at 4 options.
 
 ### 4. Show current trust state
 
@@ -204,45 +219,132 @@ Run:
 npm whoami
 ```
 
-If it **fails or prints nothing**, **STOP**. Tell the user:
+**Authenticated.** Print `✓ npm whoami: <username>` and proceed to Step 8.
 
-> You're not logged in to npm. Run `npm login` in another terminal, then
-> re-run this skill from Step 1.
+**Not authenticated.** Surface this **exact block verbatim** to the user, then stop and wait for the user's reply (`continue`). Do NOT proceed; do NOT try to drive `npm login` from this session.
 
-Do not proceed to the configure step until `npm whoami` succeeds. The
-configure step uses web 2FA which won't work without an authenticated
-session.
+```markdown
+### npm login required
 
-Once logged in, surface the pre-auth notice:
+You're not logged in to npm. Please run this in your terminal (or here in chat with `!` prefix):
 
-> The first `npm trust github` call will open a browser for npm
-> authentication. On the npm site, tick **"skip 2FA for the next 5 minutes"**
-> so the remaining packages finish without further prompts.
+```
+npm login
+```
+
+**What happens, step by step:**
+
+1. The terminal prints a URL like:
+
+   ```
+   https://www.npmjs.com/login?next=/login/cli/...
+   ```
+
+   Press **ENTER** when prompted (or open the URL manually in your browser).
+
+2. npm's login page opens in your browser. Sign in with your normal npm username and password.
+
+3. After login, npm shows a two-factor authentication page. Enter the code from your authenticator app (or use your security key / passkey).
+
+4. The browser shows "You are now logged in!" or similar.
+
+5. Return to your terminal. You should see something like:
+
+   ```
+   Logged in on https://registry.npmjs.org/ as <your-username>.
+   ```
+
+6. **Reply `continue`** in this chat and I'll resume.
+```
+
+When the user replies `continue`, re-run `npm whoami`. Only proceed to Step 8 after it succeeds.
 
 ### 8. Pre-flight dry-run
 
-Before burning a 2FA round-trip on a typo, validate the args:
+Before burning a 2FA round-trip on a typo, validate the args. This step is **safe to run in agent bash** — `--dry-run` is read-only and does not require web 2FA:
 
 ```bash
 <CLI> --auto --only-new --dry-run --repo <owner/repo> --workflow <file>
 ```
 
 If this errors (bad repo regex, invalid workflow extension, source detection
-failure), **stop and surface the error** — do not proceed to the actual
-configure call.
+failure), **stop and surface the error verbatim** — do not proceed to the
+configure handoff.
 
-### 9. Configure trust
+If the dry-run output reports zero packages need configuration (e.g., all
+already set), skip Step 9 entirely and proceed to Step 11 (verify) — the
+configure step would be a no-op.
 
-```bash
+### 9. Configure trust — manual step required
+
+The configure step calls `npm trust github` per package, which requires
+the npm web 2FA flow. The agent **cannot drive a browser flow** from
+its bash subprocess (this fails with timeouts or `EOTP` errors). Hand
+off to the user's terminal with the exact block below.
+
+Surface this **exact block verbatim** to the user, then stop and wait for the user's reply (`done`). Do NOT spawn a Bash subprocess for the configure command.
+
+```markdown
+### Configure trust — manual step required
+
+Ready to configure trust for the **N packages** listed above. npm's web-based authentication needs your browser, which I can't drive from this session, so please run this command in your terminal (or here in chat with `!` prefix):
+
+```
 <CLI> --auto --only-new --repo <owner/repo> --workflow <file>
 ```
 
-The CLI reports per-package status and a final summary
-(`Done: X configured, Y already set, Z failed`).
+**What happens, step by step:**
+
+1. The terminal prints something like:
+
+   ```
+   Configuring OIDC trusted publishing for N packages
+   ...
+   Authenticate your account at:
+   https://www.npmjs.com/auth/cli/<some-uuid>
+   Press ENTER to open in the browser...
+   ```
+
+2. **Press ENTER** (or open the URL manually in your browser).
+
+3. Sign in to npm if prompted.
+
+4. npm shows a two-factor authentication page. Look for a checkbox labelled **"Skip 2FA for the next 5 minutes"** — **check that box**.
+
+5. Click the **"Authenticate"** button (the button text may vary slightly).
+
+6. The browser shows "Authenticated successfully" or similar.
+
+7. Return to your terminal. You'll see per-package progress lines:
+
+   ```
+   @scope/pkg-a   ✓ configured
+   @scope/pkg-b   ✓ configured
+   ...
+   ```
+
+8. Wait for the **final line**, which looks like:
+
+   ```
+   Done: <X> configured, <Y> already set, <Z> failed
+   ```
+
+9. **Reply `done`** in this chat and I'll run the verify step.
+
+---
+
+**Notes if something goes wrong:**
+
+- If you see `EOTP` errors: you didn't check the "Skip 2FA for 5 minutes" box. Re-run the command and check the box this time.
+- If you see `Done: 0 configured, N already set`: trust was already set up — that's fine, reply `done`.
+- If any package shows `✗ failed`, copy the error and paste it here; I'll diagnose.
+```
+
+When the user replies `done`, proceed to Step 10/11.
 
 ### 10. Handle unpublished packages
 
-If the summary lists failed packages with the suffix `not published yet`:
+If the configure output (in the user's terminal) listed failed packages with the suffix `not published yet`, surface this to the user:
 
 > The following packages need to be published before OIDC trust can be
 > configured for them:
@@ -257,12 +359,22 @@ Do not retry automatically; publishing is a deliberate user action.
 
 ### 11. Verify
 
+This step is **safe to run in agent bash** — `--list` is read-only:
+
 ```bash
 <CLI> --auto --list
 ```
 
 All previously-untrusted-but-published packages should now show trust
 information (the workflow file path) instead of `(no trust configured)`.
+
+**Update the trust-state cache.** Read `.solo-npm/state.json` (create if missing using the v1 schema), then:
+
+- Append all packages that now show trust configured to `cache.trust.configured` (deduplicate).
+- Refresh `cache.trust.lastFullCheck` to `now`.
+- Save.
+
+The next `/release` (within `ttlDays`, with no new packages) takes the **hot path** — zero npm calls for the trust check.
 
 ### 12. Report
 

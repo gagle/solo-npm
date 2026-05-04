@@ -1,5 +1,104 @@
 # Changelog
 
+## v0.5.3 — Auto-chain on trust gap; foolproof manual handoffs; trust-state cache
+
+Three coordinated changes that codify the "skills are operators, not
+advisors" principle and dramatically reduce per-release latency for
+monorepos with many packages.
+
+### Auto-chain on trust/init gaps
+
+`/release` now auto-invokes `/solo-npm:trust` (or `/solo-npm:init`)
+when Phase A.3's check detects a fixable gap, instead of pausing to
+ask the user. The agent does NOT surface alternative invocation paths
+(e.g., the `pnpm npm-trust:setup` script). One path, the skill,
+executes.
+
+- `release.md`: new "Principle: skills are operators, not advisors"
+  section. Phase A.3 restructured into Cold path / Targeted path /
+  Hot path (cache-aware) and Auto-fix / Hard-stop / Informational
+  (issue codes). `WORKFLOWS_NONE` and "trust missing" cases now
+  auto-invoke the relevant sibling skill rather than stopping with
+  a "see /solo-npm:trust" suggestion.
+- `trust.md`: Steps 2 (GitHub repo) and 3 (publish workflow)
+  auto-confirm when unambiguous; only prompt when ≥2 plausible
+  candidates remain.
+
+Minimum-friction shape codified: **one `AskUserQuestion` per
+destructive operation, max** — trust's configure gate + release's
+approval gate. Everything fixable auto-chains.
+
+### Foolproof manual handoffs (npm login + web 2FA)
+
+The previous trust run failed because the agent tried to execute
+`npm-trust --auto --only-new ...` inside its own non-interactive bash
+subprocess. That command needs the npm web 2FA flow which can't be
+driven from a subprocess. The agent timed out, fumbled with broken
+alternative `npm trust github` invocations, and only after several
+failed attempts instructed the user to run the command manually —
+buried under failure noise.
+
+`trust.md` Steps 7 and 9 now hand off to the user's terminal **early
+and unambiguously** with verbatim numbered step-by-step instructions,
+including:
+
+- The exact command to run (`npm login`, then the configure command).
+- What text the user will see in their terminal (verbatim code blocks).
+- Each click/keystroke to perform in the browser ("Press ENTER",
+  "Check the **'Skip 2FA for the next 5 minutes'** checkbox", "Click
+  the **'Authenticate'** button").
+- The expected end state per step.
+- The exact reply the user should give back to the chat (`continue` /
+  `done`).
+- Notes for common failure modes (`EOTP` errors, "0 configured, N
+  already set", per-package failures).
+
+The agent **never spawns a Bash subprocess for the configure command**
+— eliminating the previous failure mode entirely.
+
+### Trust-state cache (`.solo-npm/state.json`)
+
+For monorepos with many packages, `npm-trust --doctor` iterates ~3 npm
+calls per package on every release — slow and mostly redundant once
+trust is established. New cache file at `.solo-npm/state.json`
+(committed; non-secret) tracks the trust-configured set with a 7-day
+TTL.
+
+Phase A.3 now branches on cache state:
+
+| Branch | Condition | npm calls |
+|---|---|---|
+| **Hot path** | Cache fresh, no new packages | 0 — env-only quick checks |
+| **Targeted path** | Cache fresh, new packages added | ~3 per *new* package |
+| **Cold path** | Cache stale or missing | Full `--doctor` run, repopulates cache |
+
+For ncbijs (43 packages), this drops daily release time from ~30s
+trust check to ~0s. New packages added since the last release are
+auto-detected and configured via `--packages <new>` targeted check;
+the rest of the package set is skipped.
+
+To force a full re-verify: delete `.solo-npm/state.json`.
+
+- `release.md`: cache-aware Phase A.3 branching, cache update on
+  Phase C.6 (CI green) success.
+- `trust.md`: Step 11 (verify) updates the cache after configure.
+- `init.md`: scaffolds `.solo-npm/state.json` with empty cache;
+  drops the (parallel-but-redundant) `package.json#scripts.npm-trust:setup`
+  scaffolding.
+- `status.md`: reads the cache for the Trust column instead of
+  calling `--doctor`. Surfaces stale-cache warning when applicable.
+
+### Migration
+
+Existing consumers (rfc-bcp47, ncbijs, etc.) should:
+
+1. Pull `solo-npm@v0.5.3` (`/plugin marketplace update gllamas-skills`).
+2. Optionally drop `package.json#scripts.npm-trust:setup` (no longer
+   needed; `/solo-npm:trust` is the canonical entry point).
+3. Create `.solo-npm/state.json` populated with their currently
+   trust-configured packages (or run `/release` once to let the
+   cold-path doctor populate it).
+
 ## v0.5.2 — Strip `name:` frontmatter from commands to match addyosmani
 
 Even after moving entries to `.claude/commands/<name>.md` in v0.5.1,

@@ -38,7 +38,6 @@ run multiple times.
 | `package.json#private` | private flag | Whether to publish at all |
 | `package.json#publishConfig` | registry, access, provenance | Public vs. custom registry detection |
 | `package.json#engines.node` | node engine | Skip if already `>=24` |
-| `package.json#scripts.npm-trust:setup` | script presence | Skip if already there |
 | `package.json#devDependencies.npm-trust` | devDep presence | Suggest `pnpm add -D npm-trust` if missing |
 | `.nvmrc` | content | Skip if already pinning ≥24 |
 | `.npmrc` (project) | `registry=`, `@scope:registry=`, `_authToken=` | Detect scope mappings, auth refs |
@@ -48,6 +47,7 @@ run multiple times.
 | `git remote get-url origin` | URL | Repo slug inference |
 | `.claude/skills/release/`, `.claude/skills/verify/` | presence | Wrapper templates: skip if exist |
 | `.claude/settings.json` | extraKnownMarketplaces, enabledPlugins | Merge if exists |
+| `.solo-npm/state.json` | trust-state cache | Create if missing (empty cache) |
 
 ### 1b. Render plan + ONE `AskUserQuestion`
 
@@ -65,12 +65,12 @@ Detected:
 Will create (only if missing):
   [✓] package.json#engines.node = ">=24"
   [✓] package.json#publishConfig = {access, provenance: true}
-  [✓] package.json#scripts.npm-trust:setup
   [✓] .nvmrc
   [✓] .github/workflows/release.yml  (public OIDC | private token)
   [✓] .claude/skills/release/SKILL.md  (thin wrapper)
   [✓] .claude/skills/verify/SKILL.md   (thin wrapper)
   [✓] .claude/settings.json            (marketplace + plugin)
+  [✓] .solo-npm/state.json             (trust-state cache, empty)
   [—] .npmrc                            (only for scoped private registry)
   [—] CONTRIBUTING.md                   (optional — solo-dev template)
 
@@ -125,13 +125,6 @@ Read, modify the parsed object, write back. Preserve formatting.
   "publishConfig": {
     "access": "public",
     "registry": "<PRIVATE_REGISTRY_URL>"
-  },
-
-  // scripts.npm-trust:setup — calls the npm-trust CLI directly (no Claude
-  // needed). Useful as a quick non-interactive shorthand alongside
-  // /solo-npm:trust:
-  "scripts": {
-    "npm-trust:setup": "npm-trust --auto --repo <REPO_SLUG> --workflow release.yml"
   }
 }
 ```
@@ -139,6 +132,14 @@ Read, modify the parsed object, write back. Preserve formatting.
 For **private** registries, `provenance: true` is **omitted** —
 Sigstore is public-npm-only. Including it would trigger
 `REGISTRY_PROVENANCE_CONFLICT` in the doctor.
+
+> **Why no `npm-trust:setup` script.** Earlier versions scaffolded a
+> `package.json#scripts.npm-trust:setup` shorthand. We removed it in
+> v0.5.3: when the user is in Claude Code, the canonical entry point is
+> `/solo-npm:trust` (which has the foolproof handoff for the npm web
+> 2FA flow). The npm script was a parallel-but-redundant path that the
+> agent could surface as an "alternative", causing decision friction.
+> Non-Claude users can still add the script manually.
 
 #### `.nvmrc`
 
@@ -352,6 +353,33 @@ If existing, **merge keys** — add `extraKnownMarketplaces.gllamas-skills`
 and `enabledPlugins["solo-npm@gllamas-skills"]: true` if not already
 present. Preserve any other keys in the file.
 
+#### `.solo-npm/state.json` — trust-state cache
+
+If missing, create with an empty cache:
+
+```json
+{
+  "version": 1,
+  "trust": {
+    "configured": [],
+    "lastFullCheck": null,
+    "ttlDays": 7
+  }
+}
+```
+
+This file is the per-repo trust-state cache used by `/solo-npm:release`
+Phase A.3 to skip per-package re-checks on every release. The first
+`/release` after init populates it via the cold-path doctor. Subsequent
+releases (within `ttlDays`, with no new packages) take the **hot path**
+— zero npm calls for the trust check.
+
+The file is **committed** (not gitignored) — package names are public
+on npm anyway, and committing gives cross-machine cache sharing for
+solo-dev.
+
+If `.solo-npm/state.json` already exists, leave it alone.
+
 #### `CONTRIBUTING.md` (optional)
 
 If user opted in via `Customize` AND no `CONTRIBUTING.md` exists,
@@ -439,11 +467,11 @@ no-op (zero diff) for these artifacts:
 
 - `package.json#engines.node` (if `>=24`)
 - `package.json#publishConfig` (if any value present)
-- `package.json#scripts.npm-trust:setup` (if any script with that key)
 - `.nvmrc` (if exists, regardless of content)
 - `.github/workflows/release.yml` (if exists, regardless of content)
 - `.npmrc` (existing lines untouched; only append scope mapping if not present)
 - `.claude/skills/release/`, `.claude/skills/verify/` (if exists, skip)
+- `.solo-npm/state.json` (if exists, leave alone)
 - `.claude/settings.json` (existing keys preserved; only merge in marketplace + plugin)
 - `CONTRIBUTING.md` (if exists)
 

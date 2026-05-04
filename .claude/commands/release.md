@@ -10,6 +10,22 @@ description: Generic opinionated baseline for tag-triggered npm releases with OI
 > Invoke `/solo-npm:release` directly only when you want the unmodified
 > baseline.
 
+## Principle: skills are operators, not advisors
+
+When this skill detects a fixable precondition (missing trust, missing
+release.yml, etc.), **automatically invoke the appropriate sibling
+skill** without asking the user. The sibling skill has its own approval
+gate before destructive operations — that's the only user-facing prompt
+needed.
+
+Do NOT pause to offer alternative invocation paths (e.g., the
+`pnpm npm-trust:setup` shorthand vs. the `/solo-npm:trust` skill). Pick
+one path (always the skill) and execute. The user invoked `/release`;
+they want a release, not a menu of options.
+
+Minimum-friction shape: **one `AskUserQuestion` per destructive
+operation, max.** Everything fixable auto-chains.
+
 ## Who this is for
 
 You're a solo developer — or running a small group of LLM agents —
@@ -77,26 +93,69 @@ verification commands (detected from `package.json#scripts.lint`,
 
 If verification fails, **STOP** and surface the error.
 
-### A.3 Trust + environment doctor
+### A.3 Trust + environment check (cache-aware)
 
-```bash
-pnpm exec npm-trust --doctor --json --workflow <RELEASE_WORKFLOW>
-```
+For monorepos with many packages, running the full `--doctor` on every
+release iterates ~3 npm calls per package — slow and mostly redundant
+once trust is established. Phase A.3 uses a local cache at
+`.solo-npm/state.json` to skip per-package work when nothing has
+changed.
 
-Parse the JSON. Branch on `summary` and `issues[].code`:
+#### Step 1 — Read cache
 
-| Condition | Action |
+Read `.solo-npm/state.json` if it exists. Compute:
+
+- `filesystem` = current package list (from `pnpm-workspace.yaml`,
+  `package.json#workspaces`, or root `package.json` for single packages)
+- `newPackages = filesystem - cache.trust.configured` (set difference)
+- `cacheAgeDays = now - cache.trust.lastFullCheck`
+- `cacheStale = (cache missing) OR (cache.trust.lastFullCheck is null) OR (cacheAgeDays >= cache.trust.ttlDays)`
+
+#### Step 2 — Branch on cache state
+
+| Branch | Condition | Action |
+|---|---|---|
+| **Cold path** (full check) | `cacheStale` is true | Run `pnpm exec npm-trust --doctor --json --workflow <RELEASE_WORKFLOW>`. Apply the issue-code branching in Step 3 below. After success, **rewrite** `cache.trust.configured` with the current full list of `packages[]` where `trustConfigured == true OR provenancePresent == true`; refresh `lastFullCheck` to now. Save. |
+| **Targeted path** (delta only) | Cache fresh, `newPackages` non-empty | Run `pnpm exec npm-trust --packages <newPackages...> --list --json`. If any returned packages need config, auto-invoke `/solo-npm:trust --packages <newPackages...>`. After trust returns success, **append** `newPackages` to `cache.trust.configured`. Save. (Don't refresh `lastFullCheck` — the rest of the package set was not re-verified.) |
+| **Hot path** (zero npm calls) | Cache fresh, `newPackages` empty | Skip the trust check. Run inline env checks instead: `node -v` returns ≥24, `npm -v` returns ≥11.5.1, `git remote get-url origin` succeeds, `.github/workflows/<RELEASE_WORKFLOW>` exists. Proceed to Phase B. |
+
+**Forcing a full re-verify.** Delete `.solo-npm/state.json` (or set
+`lastFullCheck` to null) to force the cold path on the next release —
+the explicit escape hatch for "I just changed something on the npm
+registry side; re-verify everything."
+
+#### Step 3 — Issue-code branching (cold path only)
+
+When the doctor JSON is parsed, apply this branching. **Auto-fix when
+the next action is unambiguous; do NOT pause to offer alternative
+invocation paths.**
+
+**Auto-fix (no user prompt):**
+
+| Detected | Auto-action |
 |---|---|
-| `summary.fail > 0` | **STOP**, surface the failing issue |
-| `WORKSPACE_NOT_DETECTED`, `REPO_NO_REMOTE`, `WORKFLOWS_NONE` | **STOP** |
-| `PACKAGE_NOT_PUBLISHED` for a package | **STOP** — first-publish ceremony needed; see `/solo-npm:trust` (or `/solo-npm:init` for full bootstrap) |
-| `AUTH_NOT_LOGGED_IN` | **Ignore** — tag-triggered CI publishes via OIDC; local auth doesn't matter |
-| `PACKAGE_TRUST_DISCREPANCY` | **Ignore (informational)** — registry has provenance even when `npm trust list` is empty |
-| `WORKFLOWS_AMBIGUOUS` | Should not fire (`--workflow` was passed). If it does, **STOP** and ask the user which workflow is the publish workflow |
-| `REGISTRY_PROVENANCE_CONFLICT` | **STOP** — surface the remedy: either remove `provenance: true` or change `registry` back to public npm |
-| Any other warn | Surface but proceed |
+| `WORKFLOWS_NONE` | Auto-invoke `/solo-npm:init` to scaffold `release.yml`. After init completes, re-run A.3 (now with workflows in place). |
+| Any package with `trustConfigured == false` AND `provenancePresent == false` | Auto-invoke `/solo-npm:trust`. After trust completes, re-run A.3. |
 
-Phase A passes silently for the typical case. Move to Phase B.
+**Hard stops (no auto-fix possible; surface to user and end):**
+
+| Detected | Action |
+|---|---|
+| `summary.fail > 0` (any other failure) | STOP. Surface the failing issue verbatim. |
+| `WORKSPACE_NOT_DETECTED`, `REPO_NO_REMOTE` | STOP. The user must fix the repo structure. |
+| `PACKAGE_NOT_PUBLISHED` for any package | STOP. First publish must be manual: surface the package list and instruct the user — `npm publish --provenance=false --access public` once per package, then re-run `/release`. |
+| `REGISTRY_PROVENANCE_CONFLICT` | STOP. Surface the remedy: either remove `provenance: true` from `publishConfig` or change `registry` back to public npm. |
+
+**Informational (continue silently):**
+
+| Detected | Action |
+|---|---|
+| `AUTH_NOT_LOGGED_IN` | Ignore. Tag-triggered CI publishes via OIDC; local auth doesn't matter for release. |
+| `PACKAGE_TRUST_DISCREPANCY` | Ignore. Registry has provenance even when `npm trust list` is empty. |
+| Any other `warn`-severity issue | Surface as a one-line note, but proceed. |
+
+Phase A passes silently for the typical case (everything green) or
+after auto-fix completes. Move to Phase B.
 
 ## Phase B — Plan and confirm
 
@@ -292,6 +351,17 @@ If CI fails, **STOP** and surface the error. The tag is on origin
 (intentional record of intent); recovery is `gh run rerun <id>` after
 fixing the cause. **Do not** bump the version unless the tarball needs
 new content.
+
+**On CI success: refresh the trust-state cache.** A successful CI
+publish via OIDC is proof that trust still works for every package
+that just published. Update `.solo-npm/state.json`:
+
+- Set `cache.trust.lastFullCheck` to `now` (extends the cache TTL).
+- Append any newly-published packages to `cache.trust.configured` if
+  not already present.
+
+This means the next `/release` (within `ttlDays`, with no new packages
+added) takes the **hot path** — zero npm calls for the trust check.
 
 ### C.7 Verify on the registry
 

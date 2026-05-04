@@ -101,15 +101,25 @@ git rev-list <latest_tag>..HEAD --count           # unreleased commits
 The "unreleased commits" count is the **drift** signal: > 0 means main
 is ahead of the latest published version.
 
-### Trust state
+### Trust state — read from cache, no live npm calls
 
-Reuse the doctor's output from Phase 1. For each package, look at
-`packages[].trustConfigured` (boolean) and `packages[].provenancePresent`
-(boolean). The "Trust" column shows:
+Read `.solo-npm/state.json` if it exists.
 
-- `✓` if either trustConfigured or provenancePresent is true
+For each package in the dashboard:
+
+- `✓` if the package name is in `cache.trust.configured` AND the cache is fresh (`now - cache.trust.lastFullCheck < cache.trust.ttlDays`)
 - `—` if package is unpublished
-- `✗` if published but neither trustConfigured nor provenancePresent
+- `✗` if the package is NOT in `cache.trust.configured` (cache is the source of truth; if a package isn't tracked it's assumed not-yet-trust-configured)
+
+If the cache is stale (last full check > `ttlDays` ago) OR missing,
+surface a one-line note above the table:
+
+> ⚠️ Trust state cache stale (last full check N days ago). Run
+> `/release` or `/solo-npm:trust` to refresh.
+
+This skill is **read-only and fast** — it does NOT call `npm-trust
+--doctor` to get live trust state. The cache is populated by `/release`
+and `/solo-npm:trust`. Status's job is to *show* state, not derive it.
 
 ## Phase 3 — Render
 
