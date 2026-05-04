@@ -1,76 +1,150 @@
 <h1 align="center">solo-npm</h1>
 
+<p align="center"><b>The full npm publishing lifecycle for AI-driven solo developers.</b></p>
+
 <p align="center">
-  The full npm publishing lifecycle for AI-driven solo dev.<br>
-  Seven skills covering bootstrap, release, and portfolio operations.
+Seven slash commands that take an empty repo to a tag-triggered OIDC release flow with provenance, then keep the portfolio healthy.
 </p>
 
-## The problem
+```
+   BOOTSTRAP              ITERATE                  OPERATE
+ ┌──────────────┐      ┌──────────────┐       ┌──────────────────┐
+ │ /init        │ ───▶ │ /verify      │ ◀───▶ │ /status (daily)  │
+ │ /trust       │      │ /release     │       │ /audit  (monthly)│
+ └──────────────┘      └──────────────┘       │ /deps   (on CVE) │
+   one-time             per release            └──────────────────┘
+```
 
-You're a solo developer — or running a small group of LLM agents —
-shipping npm packages. PRs are disabled in your repos
-(issue/discussion contribution model only). There's no committee to
-review, no second pair of human eyes.
+---
 
-Existing release tooling is built for teams: PR-based workflows,
-multi-stage approvals, complex changelog negotiation. In a solo or
-agent-driven context that overhead becomes friction — and friction
-makes you skip steps when you're moving fast. Skipped steps make
-unsigned, unverified, opaque releases.
+## Commands
 
-You want releases that are:
+7 namespaced slash commands map to the publishing lifecycle. Each one is opinionated, idempotent, and verify-gated.
 
-- **Boring**: tested, typed, provenanced, every time. No exceptions.
-- **One-touch**: not a 15-step runbook, not a commit-message lottery.
-- **Provable**: SLSA attestations on every tarball, traceable to git.
+| What you're doing | Command | Key principle |
+|---|---|---|
+| Bootstrap a fresh repo | `/solo-npm:init` | One-shot scaffold + first-publish gate + chain into trust |
+| Configure OIDC trust | `/solo-npm:trust` | `npm trust github` per package, web 2FA once |
+| Run quality gates | `/solo-npm:verify` | Lint → typecheck → test → build; halt on first failure |
+| Ship a release | `/solo-npm:release` | Three-phase tag-triggered publish with **one** approval gate |
+| Snapshot the portfolio | `/solo-npm:status` | Read-only — version, downloads, trust, CI, drift |
+| Triage security advisories | `/solo-npm:audit` | Classify CVEs into 4 actionable tiers; chain to deps |
+| Upgrade dependencies | `/solo-npm:deps` | Tier-batched with `/verify` gates and rollback on failure |
 
-But also: you want to *operate* a portfolio of packages without
-context-switching across five browser tabs every morning. You want to
-catch CVEs before they bite. You want to upgrade deps without it being
-a chore.
+---
 
-## The solution
+## Tell Claude
 
-A Claude Code marketplace plugin with **seven skills**, organized by
-lifecycle phase:
+The fastest path: open Claude Code in your repo and say:
 
-| Phase | Skills |
-|---|---|
-| **Bootstrap** (one-time per repo) | `/solo-npm:init`, `/solo-npm:trust` |
-| **Per-release** | `/release` (your wrapper) → `/solo-npm:release`, `/verify` (your wrapper) → `/solo-npm:verify` |
-| **Portfolio operations** | `/solo-npm:status`, `/solo-npm:audit`, `/solo-npm:deps` |
+> **Integrate solo-npm into this repo. Read https://github.com/gagle/solo-npm and follow the Quick Start.**
 
-Each skill has one responsibility:
+Claude will:
 
-- `init` — bootstrap a fresh repo (scaffold + first-publish gate + chain into `trust`).
-- `trust` — configure npm OIDC Trusted Publishing across the repo's packages.
-- `release` — three-phase tag-triggered release with one approval gate.
-- `verify` — lint + typecheck + test + build.
-- `status` — one-page portfolio dashboard (read-only).
-- `audit` — security audit with risk triage (read-only).
-- `deps` — dep upgrade orchestrator with `/verify` gates.
+1. Fetch this README.
+2. Write the marketplace block into your `.claude/settings.json`.
+3. Wait for you to accept the install prompt on folder trust.
+4. Run `/solo-npm:init` to scaffold release.yml + publishConfig + `.nvmrc` + consumer wrappers, then chain into `/solo-npm:trust` for OIDC.
 
-Type `/release` (your wrapper) for daily releases. Type
-`/solo-npm:status` to see your portfolio at a glance.
-`/solo-npm:audit` and `/solo-npm:deps` round out the maintenance
-loop. `/solo-npm:init` and `/solo-npm:trust` are one-off bootstrap.
+One conversation. The repo goes from empty to ready-to-tag.
+
+---
+
+## Quick Start
+
+### 1. Pin the marketplace
+
+Create or merge into `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "gllamas-skills": {
+      "source": { "source": "github", "repo": "gagle/solo-npm" }
+    }
+  },
+  "enabledPlugins": {
+    "solo-npm@gllamas-skills": true
+  }
+}
+```
+
+Commit it. Anyone who opens the repo gets prompted to install on first folder trust.
+
+### 2. Accept install prompts
+
+When you open the repo in Claude Code, accept:
+- *Install marketplace `gllamas-skills`?* → Yes
+- *Install plugin `solo-npm@gllamas-skills`?* → Yes
+
+All seven `/solo-npm:*` commands resolve.
+
+### 3. Bootstrap
+
+```
+/solo-npm:init
+```
+
+Phase 1 scaffolds:
+- `.github/workflows/release.yml` (public OIDC or private token, auto-detected)
+- `package.json` updates (`engines.node`, `publishConfig`, `npm-trust:setup` script)
+- `.nvmrc`
+- `.claude/skills/release/SKILL.md` thin wrapper (workspace-shape-aware)
+- `.claude/skills/verify/SKILL.md` thin wrapper
+
+Phase 2 gates on first manual publish (npm requires the package name to exist before OIDC trust can attach).
+
+Phase 3 chains into `/solo-npm:trust` to configure OIDC.
+
+That's it. From here on, daily DX is `/release`.
+
+### Manual install (one-off testing)
+
+```
+/plugin marketplace add gagle/solo-npm
+/plugin install solo-npm@gllamas-skills
+```
+
+---
+
+## The seven commands
+
+### Bootstrap
+
+| Command | What it does | Use when |
+|---|---|---|
+| [`/solo-npm:init`](.claude/commands/init.md) | Umbrella scaffolder. Detects workspace shape (single / pnpm / Nx), generates release.yml + publishConfig + .nvmrc + consumer wrappers + settings.json. Idempotent — safe to re-invoke. Phase 2 gates on first publish. Phase 3 chains into `/solo-npm:trust`. | Fresh repo (or new package added to an existing monorepo) |
+| [`/solo-npm:trust`](.claude/commands/trust.md) | Interactive OIDC wizard. Walks `npm login`, web 2FA once, runs `npm trust github` per package, verifies. Uses the [`npm-trust`](https://github.com/gagle/npm-trust) CLI. | First OIDC setup or after publishing a new package |
+
+### Per release
+
+| Command | What it does | Use when |
+|---|---|---|
+| [`/solo-npm:release`](.claude/commands/release.md) | Three phases. **A. Pre-flight** runs `/verify` + `npm-trust --doctor`, silent if green. **B. Plan** detects bump from conventional commits, renders summary, asks **one** structured `AskUserQuestion`. **C. Execute** bumps version, commits, pushes, tags, watches CI, verifies registry attestation. | Shipping any release |
+| [`/solo-npm:verify`](.claude/commands/verify.md) | Lint + typecheck + test + build, halt on first failure. Auto-detects package manager and scripts. Composes with `/release` (Phase A.2 + C.4) and `/deps` (after each upgrade batch). | Pre-commit, pre-release, after deps changes |
+
+### Operate the portfolio
+
+| Command | What it does | Use when |
+|---|---|---|
+| [`/solo-npm:status`](.claude/commands/status.md) | One-page dashboard: latest version, last publish, weekly downloads, OIDC trust state, recent commits, open issues, CI health. Read-only — no state changes. Surfaces action hints (e.g., "@pkg has 2 unreleased commits → /release ready?"). | Daily/weekly portfolio check |
+| [`/solo-npm:audit`](.claude/commands/audit.md) | Runs `pnpm audit`, classifies advisories into 4 tiers (Fix today / Plan upgrade / Lower priority / Note). Surfaces only the actionable subset. Read-only; chains to `/deps` for fixes. | Monthly maintenance or when a CVE lands |
+| [`/solo-npm:deps`](.claude/commands/deps.md) | Tier-batched upgrade orchestrator. Classifies into trivial/safe/major/CVE-driven, applies in dep-graph order, runs `/verify` after each batch, rolls back on failure with an `AskUserQuestion` gate. Major upgrades NEVER auto-applied. | Monthly maintenance or to fix CVEs from `/audit` |
+
+---
 
 ## Composition pattern
 
-The marketplace skills are **opinionated baselines**. Consumer repos
-keep **thin wrappers** in `.claude/skills/<name>/SKILL.md` that invoke
-the baseline + add repo-specific narrative. The wrapper pattern
-preserves per-repo customization (Nx monorepo specifics, prepare-dist
-usage, custom verification commands) without forking the whole skill.
+Marketplace commands are **opinionated baselines**. Consumer repos keep **thin wrappers** in `.claude/skills/<name>/SKILL.md` that invoke the baseline + add repo-specific narrative. The wrapper pattern preserves per-repo customization without forking the whole skill.
 
-| Skill | Has consumer wrapper? | Why |
+Daily-use commands get wrappers; one-off and read-only commands don't:
+
+| Command | Wrapper? | Why |
 |---|---|---|
-| `release` | YES (daily use) | Per-repo narrative: workspace shape, prepare-dist usage, custom verification |
-| `verify` | YES (daily use) | Per-repo verification commands |
-| `init`, `trust`, `status`, `audit`, `deps` | NO | One-off or auto-detected; no per-repo customization |
+| `release`, `verify` | YES | Per-repo narrative: workspace shape, prepare-dist usage, custom verification commands |
+| `init`, `trust`, `status`, `audit`, `deps` | NO | One-off or auto-detected — no per-repo customization |
 
-`/solo-npm:init` scaffolds the wrappers automatically when you bootstrap
-a fresh repo.
+`/solo-npm:init` scaffolds the wrappers automatically when you bootstrap.
 
 ### What a wrapper looks like
 
@@ -89,7 +163,7 @@ Composes /solo-npm:release with this repo's specifics.
 ## Repo context
 
 - Workspace: pnpm + Nx monorepo at `packages/*`
-- Versioning: unified across all packages
+- Versioning: unified — single git tag bumps every package
 - Publish: per-package matrix in `release.yml`; uses `gagle/prepare-dist@v1`
 - Repo slug: `gagle/ncbijs`
 - Workflow: `release.yml`
@@ -104,241 +178,166 @@ Invoke `/solo-npm:release` for the opinionated three-phase baseline.
 (none today)
 ```
 
-When you type `/release`, Claude Code loads the wrapper, the wrapper
-instructs the agent to invoke `/solo-npm:release`, and both bodies
-sit in context. Claude reasons over the merged guidance — your
-overrides + the opinionated baseline.
+When you type `/release`, Claude Code loads the wrapper. The wrapper invokes `/solo-npm:release`. Both bodies sit in context — Claude reasons over the merged guidance (your overrides + the opinionated baseline).
 
-## Install
+---
 
-### Bootstrap a fresh repo
-
-Paste this into your repo's `.claude/settings.json` (create the file
-if it doesn't exist):
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "gllamas-skills": {
-      "source": {
-        "source": "github",
-        "repo": "gagle/solo-npm"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "solo-npm@gllamas-skills": true
-  }
-}
-```
-
-Then open the repo in Claude Code. On first folder trust, you'll see
-prompts:
-
-1. *Install marketplace `gllamas-skills`?* → Yes
-2. *Install plugin `solo-npm@gllamas-skills`?* → Yes
-
-After accepting, all seven `/solo-npm:*` invocations are available.
-
-Then run `/solo-npm:init` once. The skill scaffolds:
-
-- `.github/workflows/release.yml` (public OIDC or private token, depending on your registry)
-- `package.json` updates (`engines.node`, `publishConfig`, `npm-trust:setup` script)
-- `.nvmrc`
-- `.claude/skills/release/SKILL.md` thin wrapper (workspace-shape-aware)
-- `.claude/skills/verify/SKILL.md` thin wrapper
-
-After Phase 1 it gates on first manual publish (npm requires the name
-to exist on the registry before OIDC trust can be configured), then
-chains into `/solo-npm:trust` for the npm-side OIDC config.
-
-### Manual install (one-off testing)
-
-If you want to try the plugin without committing the settings.json
-block:
+## How it works
 
 ```
-/plugin marketplace add gagle/solo-npm
-/plugin install solo-npm@gllamas-skills
+┌────────────────────────────────────────────────────────────────┐
+│  solo-npm plugin (.claude/commands/<name>.md)                  │
+│    Opinionated baseline workflow                               │
+│    Auto-detects: workspace shape, repo slug, package manager   │
+│    Composes with: npm-trust CLI, /verify, /deps                │
+└──────────────────────────┬─────────────────────────────────────┘
+                           │ invoked from
+                           ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Consumer wrapper (.claude/skills/<name>/SKILL.md)             │
+│    Repo-specific narrative + step overrides                    │
+│    Bare invocation (e.g., /release)                            │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-## The seven skills
+**Three-phase release anatomy** (the most-used command):
 
-### Bootstrap
-
-#### `/solo-npm:init`
-
-Bootstrap a fresh repo. Idempotent — safe to re-invoke. Phase 1
-scaffolds files, Phase 2 gates on first publish, Phase 3 chains into
-`/solo-npm:trust`, Phase 4 done.
-
-Supports public npm (OIDC + provenance) and private/custom registries
-(token auth via GitHub Actions secret).
-
-#### `/solo-npm:trust`
-
-Interactive wizard for configuring npm OIDC Trusted Publishing. The
-skill orchestrates the [`npm-trust`](https://github.com/gagle/npm-trust)
-CLI: detects workspace, walks through any required manual steps
-(`npm login`, web 2FA), runs `npm trust github` per package, verifies.
-
-Use on first OIDC setup or when adding new packages.
-
-### Per-release
-
-#### `/release` (wrapper) → `/solo-npm:release`
-
-Three phases. Halts on the first failure.
-
-| Phase | What happens | Human input |
+| Phase | Purpose | Human input |
 |---|---|---|
-| **A. Pre-flight** | `/verify` (lint + test + build) → `npm-trust --doctor` | none (silent if green) |
-| **B. Plan** | Detect bump, render summary, **one** `AskUserQuestion` selector | one click: Proceed / Override / Edit changelog / Abort |
-| **C. Execute** | Bump → commit → push → tag → watch CI → verify on registry | none |
+| **A. Pre-flight** | `/verify` + `npm-trust --doctor`. Silent if green. Halts on failure. | None |
+| **B. Plan** | Detect version bump from conventional commits, render summary, render CHANGELOG draft, ask **one** structured `AskUserQuestion`. | One click: Proceed / Override / Edit changelog / Abort |
+| **C. Execute** | Bump version, commit, push, tag, watch CI, verify provenance attestation on registry. | None |
 
-Type `/release` (or `/solo-npm:release` for the bare baseline). Review
-the plan once. Click `Proceed`. Get a notification when the tarball
-is on npm with provenance.
+One human checkpoint. Everything else is silent if green.
 
-#### `/verify` (wrapper) → `/solo-npm:verify`
+---
 
-Lint + typecheck + test + build, halting on first failure. Auto-detects
-the package manager and verification scripts; consumer wrapper specifies
-the exact commands.
+## Project structure
 
-Composes with `/release` (Phase A.2 + C.4) and `/solo-npm:deps` (after
-each upgrade batch).
+```
+solo-npm/
+├── .claude-plugin/
+│   ├── plugin.json           # plugin manifest
+│   └── marketplace.json      # marketplace catalog (gllamas-skills)
+├── .claude/
+│   └── commands/             # 7 plugin commands (each → /solo-npm:<name>)
+│       ├── init.md           #   Bootstrap
+│       ├── trust.md          #   Bootstrap (OIDC)
+│       ├── verify.md         #   Per release (quality gates)
+│       ├── release.md        #   Per release (tag-triggered)
+│       ├── status.md         #   Operate (dashboard)
+│       ├── audit.md          #   Operate (security)
+│       └── deps.md           #   Operate (upgrades)
+├── docs/
+│   └── install.md            # detailed install + bootstrap guide
+├── README.md
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+└── LICENSE
+```
 
-### Portfolio operations
+---
 
-#### `/solo-npm:status`
+## Advanced
 
-One-page dashboard. Read-only snapshot of all your published packages:
-latest version, last publish date, weekly downloads, OIDC trust state,
-recent commits, open issues, CI health. Daily/weekly cadence.
+<details>
+<summary><b>Pre-release versions</b></summary>
 
-Replaces "open 5 browser tabs to check on my packages" with one
-command.
+The release command detects `x.y.z-pre.n` shape automatically. Phase B's `AskUserQuestion` adapts:
 
-#### `/solo-npm:audit`
-
-Security audit with risk triage. Runs `pnpm audit` and classifies
-advisories into 4 tiers (Fix today / Plan upgrade / Lower priority /
-Note). Surfaces only the actionable subset. Read-only.
-
-When Tier 1 or 2 has entries, gates with `AskUserQuestion` to chain
-into `/solo-npm:deps` for the fix.
-
-#### `/solo-npm:deps`
-
-Curated dep upgrade orchestrator with `/verify` gates. Detects
-outdated + vulnerable deps, classifies into tiers (trivial/safe/
-major/CVE-driven), batches upgrades in dependency-graph order, runs
-`/verify` after each batch, rolls back on failure with
-`AskUserQuestion` gate. One commit per batch.
-
-Major upgrades NEVER auto-applied — surfaces upstream release notes
-URL for human review. AI-orchestration ≠ AI-decision for breaking
-changes.
-
-## Pre-release versions
-
-The release skill detects `x.y.z-pre.n` shape automatically. Phase B's
-`AskUserQuestion` adapts:
-
-- `Bump pre-release counter` (e.g., `1.3.0-beta.1` → `1.3.0-beta.2`)
+- `Bump pre-release counter` (`1.3.0-beta.1` → `1.3.0-beta.2`)
 - `Promote to stable` (`1.3.0-beta.n` → `1.3.0`)
 - `Override` / `Abort`
 
-To start a pre-release line from stable, use `Override version` and
-type something like `1.3.0-beta.1` — accepted verbatim.
+To start a pre-release line from stable, pick `Override version` and type `1.3.0-beta.1` — accepted verbatim.
 
-## Custom / private registries
+</details>
 
-The release skill works against public npm (default) and any custom /
-private registry that respects npm token auth (Verdaccio, JFrog
-Artifactory, GitHub Packages, GitLab Package Registry, etc.).
+<details>
+<summary><b>Custom / private registries (Verdaccio, Artifactory, GitHub Packages, ...)</b></summary>
 
-### What changes for custom registries
+The release command works against public npm (default) and any custom / private registry that respects npm token auth.
 
 | Concern | Public npm | Custom / private |
 |---|---|---|
-| Auth in CI | OIDC (no secrets needed) | `NODE_AUTH_TOKEN` env from GitHub Actions secret |
+| Auth in CI | OIDC (no secrets) | `NODE_AUTH_TOKEN` env from GitHub Actions secret |
 | `release.yml` permissions | `id-token: write` | (no `id-token`) |
 | `package.json#publishConfig` | `{ access, provenance: true }` | `{ access, registry: "<URL>" }` (no provenance) |
-| SLSA provenance attestation | ✓ | ✗ (Sigstore is npmjs.com-only) |
-| Phase C.7 verify on registry | `npm view <pkg> dist.attestations` | skipped |
+| SLSA provenance | ✓ | ✗ (Sigstore is npmjs.com-only) |
 | `/solo-npm:trust` | configures OIDC | not applicable (token auth) |
 
-`/solo-npm:init` detects whether `publishConfig.registry` (or `.npmrc`)
-already points at a custom registry and picks the right `release.yml`
-template + omits `provenance: true`.
+`/solo-npm:init` detects whether `publishConfig.registry` (or `.npmrc`) already points at a custom registry and picks the right `release.yml` template + omits `provenance: true`.
 
-NEVER commit a literal `_authToken=...` line in `.npmrc`. The token
-belongs in env / repo secrets only. `npm-trust --doctor` flags this
-as `NPMRC_LITERAL_TOKEN`.
+NEVER commit a literal `_authToken=...` line in `.npmrc`. The token belongs in env / repo secrets only. `npm-trust --doctor` flags this as `NPMRC_LITERAL_TOKEN`.
 
-## Monorepos
+</details>
 
-The release skill auto-detects pnpm + Nx monorepos and iterates
-`packages/*` for the version bump + per-package registry verification.
-The init skill scaffolds a monorepo-flavored release wrapper template.
+<details>
+<summary><b>Monorepos (pnpm + Nx, matrix publish, prepare-dist)</b></summary>
 
-See [`gagle/ncbijs`](https://github.com/gagle/ncbijs) as a working
-example of the matrix-publish pattern.
+The release command auto-detects pnpm + Nx monorepos and iterates `packages/*` for the version bump + per-package registry verification. The init command scaffolds a monorepo-flavored release wrapper template.
 
-### Publishing from `dist/` with `gagle/prepare-dist@v1`
+See [`gagle/ncbijs`](https://github.com/gagle/ncbijs) as a working example.
 
-Monorepos that publish from `<package>/dist/` (rather than from
-`<package>/`) commonly pair with the
-[`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist)
-GitHub Action — it cleans up `<dist>/package.json` (strips `dist/`
-prefix from paths, drops dev fields, copies README + LICENSE) and
-verifies that `package.json#version` matches the pushed tag.
+**Publishing from `dist/` with `gagle/prepare-dist@v1`:** monorepos that publish from `<package>/dist/` (rather than `<package>/`) commonly pair with the [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) GitHub Action — it cleans up `<dist>/package.json` (strips `dist/` prefix from paths, drops dev fields, copies README + LICENSE) and verifies the version matches the pushed tag.
 
 | Layer | Owner |
 |---|---|
-| Bump source `package.json#version` | release skill (Phase C.1) |
-| Tag + push tag | release skill (Phase C.5) |
+| Bump source `package.json#version` | release command (Phase C.1) |
+| Tag + push tag | release command (Phase C.5) |
 | Translate source → `dist/package.json` | `prepare-dist` action in `release.yml` |
 | `npm publish` from `<package>/dist/` | `release.yml` publish step |
-| Registry verify | release skill (Phase C.7) |
+| Registry verify | release command (Phase C.7) |
 
-The consumer's release wrapper notes "uses `gagle/prepare-dist@v1`"
-so the agent expects the dist-translation phase in CI.
+The consumer's release wrapper notes "uses `gagle/prepare-dist@v1`" so the agent expects the dist-translation phase in CI.
 
-## Contributing
+</details>
 
-This project follows an AI-only contribution model — see
-[`CONTRIBUTING.md`](./CONTRIBUTING.md). PRs are disabled. Open an issue
-or discussion for change requests.
+<details>
+<summary><b>Dogfooding (working on solo-npm itself)</b></summary>
 
-### Dogfooding
-
-To test changes locally without going through the marketplace install,
-launch Claude Code with `--plugin-dir`:
+To test changes locally without going through the marketplace install, launch Claude Code with `--plugin-dir`:
 
 ```bash
 cd ~/projects/solo-npm
 claude --plugin-dir .
 ```
 
-Inside that session, all commands load **with the `solo-npm:` namespace**
-— `/help` shows `/solo-npm:release`, `/solo-npm:deps`, etc., matching
-what consumers see. Each change to `.claude/commands/<name>.md` takes
-effect after `/reload-plugins`.
+Inside that session, all commands load with the `solo-npm:` namespace. Each change to `.claude/commands/<name>.md` takes effect after `/reload-plugins`.
 
-The plugin entries live in `.claude/commands/<name>.md` (flat markdown
-files), not `skills/<name>/SKILL.md` (folder-per-skill). Both forms
-work the same way per the Claude Code docs, but **plugin commands**
-display as `/<plugin>:<name>` literally in the autocomplete dropdown
-while **plugin skills** display as `/<name> (<plugin>)`. We use the
-commands form to match `addyosmani/agent-skills`'s DX.
+The plugin entries live in `.claude/commands/<name>.md` (flat markdown), not `skills/<name>/SKILL.md` (folder-per-skill). Both forms work the same way functionally, but **plugin commands** display as `/<plugin>:<name>` literally in the autocomplete dropdown while **plugin skills** display as `/<name> (<plugin>)`. We use the commands form to match `addyosmani/agent-skills`'s DX.
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for details.
 
+</details>
+
+---
+
+## Why solo-npm?
+
+You're a solo developer — or running a small group of LLM agents — shipping npm packages. PRs are disabled in your repos (issue/discussion contribution model only). There's no committee, no second pair of human eyes.
+
+Existing release tooling is built for teams: PR-based workflows, multi-stage approvals, complex changelog negotiation. In a solo or agent-driven context that overhead becomes friction — and friction makes you skip steps when you're moving fast. Skipped steps make unsigned, unverified, opaque releases.
+
+solo-npm replaces that friction with **one structured `AskUserQuestion` checkpoint per release** and silent automation everywhere else. The skills bake in opinionated defaults — SLSA provenance attestation, OIDC Trusted Publishing, conventional-commit-driven version bumps, verify-gated dep upgrades — so you can't accidentally ship something untested or unsigned.
+
+Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) replace the morning ritual of opening five browser tabs to check on your portfolio. One terminal command per concern.
+
+Tools used under the hood: [`npm-trust`](https://github.com/gagle/npm-trust) (CLI for OIDC trust config), [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) (monorepo dist translation, optional).
+
+---
+
 ## See also
 
-- [`gagle/npm-trust`](https://github.com/gagle/npm-trust) — pure CLI for
-  configuring npm OIDC Trusted Publishing. The `/solo-npm:trust` skill
-  orchestrates this CLI.
+- [`gagle/npm-trust`](https://github.com/gagle/npm-trust) — pure CLI for npm OIDC Trusted Publishing. The `/solo-npm:trust` and `/solo-npm:audit` commands orchestrate this CLI.
+- [`gagle/prepare-dist@v1`](https://github.com/gagle/prepare-dist) — GitHub Action for translating monorepo source `package.json` → `dist/package.json` at publish time.
+
+---
+
+## Contributing
+
+This project follows an AI-only contribution model — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). PRs are disabled. Open an issue or discussion for change requests.
+
+## License
+
+MIT — use freely.
