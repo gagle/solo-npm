@@ -12,7 +12,7 @@ Seven slash commands that take an empty repo to a tag-triggered OIDC release flo
  │ /init        │ ───▶ │ /verify      │ ◀───▶ │ /status (daily)  │
  │ /trust       │      │ /release     │       │ /audit  (monthly)│
  └──────────────┘      └──────────────┘       │ /deps   (on CVE) │
-   one-time             per release            └──────────────────┘
+  one-time              per release           └──────────────────┘
 ```
 
 ---
