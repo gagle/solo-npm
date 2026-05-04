@@ -1,116 +1,153 @@
 # Installing solo-npm
 
-Step-by-step install + customization guide.
+Step-by-step install + bootstrap guide.
 
-## 1. Add the marketplace and install the plugin
+## 1. Pin the marketplace and plugin in your repo
 
-In Claude Code:
+In your repo, create or merge `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "gllamas-skills": {
+      "source": {
+        "source": "github",
+        "repo": "gagle/solo-npm"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "solo-npm@gllamas-skills": true
+  }
+}
+```
+
+Commit this file. Anyone who opens the repo on a fresh machine gets
+prompted to install the marketplace + plugin on first folder trust.
+
+## 2. Open the repo in Claude Code
+
+On first folder trust, you'll see two prompts:
+
+1. *Install marketplace `gllamas-skills`?* → **Yes**
+2. *Install plugin `solo-npm@gllamas-skills`?* → **Yes**
+
+After accepting, all seven `/solo-npm:*` invocations resolve.
+
+If you skip the prompts, you can install manually any time:
 
 ```
 /plugin marketplace add gagle/solo-npm
 /plugin install solo-npm@gllamas-skills
 ```
 
-This installs three skills into your repo's `.claude/skills/`:
-
-- `init/SKILL.md` — one-shot scaffolder for fresh repos
-- `release/SKILL.md` — the canonical `/solo-npm:release` skill
-- `verify/SKILL.md` — a default `/solo-npm:verify` skill
-
-The same marketplace also hosts the sibling `npm-trust` plugin
-(OIDC trust setup wizard):
-
-```
-/plugin install npm-trust@gllamas-skills
-```
-
-After install, `/npm-trust:setup` is available.
-
-## 2. (Easy path) Run `/solo-npm:init` to scaffold everything
-
-If your repo doesn't already have `release.yml` + `publishConfig` +
-`engines.node` + `.nvmrc` + the `npm-trust:setup` script, run
-`/solo-npm:init` once. It detects current state, asks one
-`AskUserQuestion`, and scaffolds only what's missing. Idempotent.
-Supports public npm AND private/custom registries.
+## 3. Bootstrap a fresh repo with `/solo-npm:init`
 
 ```
 /solo-npm:init
 ```
 
-After `/solo-npm:init` finishes, the printed checklist covers the
-last manual steps (devDep install, OIDC trust setup or GitHub secret
-config). Then jump to step 4.
+Phase 1 scaffolds:
 
-## 3. (Manual path) Edit the placeholders in `release/SKILL.md`
+- `.github/workflows/release.yml` (public OIDC or private token, depending on your registry config)
+- `package.json` updates (`engines.node`, `publishConfig`, `npm-trust:setup` script)
+- `.nvmrc`
+- `.claude/skills/release/SKILL.md` (thin wrapper, workspace-shape-aware)
+- `.claude/skills/verify/SKILL.md` (thin wrapper)
 
-Open `.claude/skills/release/SKILL.md` and find the
-**Placeholders** table near the top. Replace each placeholder
-throughout the file:
+Idempotent — only creates what's missing. Safe to re-invoke.
 
-| Placeholder | What to put |
-|---|---|
-| `<PACKAGE_NAME>` | Your npm package name (e.g., `rfc-bcp47`) |
-| `<REPO_SLUG>` | `<owner>/<repo>` (e.g., `gagle/rfc-bcp47`) |
-| `<RELEASE_WORKFLOW>` | The filename of your publish workflow (e.g., `release.yml`) |
-| `<LINT_CMD>`, `<TEST_CMD>`, `<BUILD_CMD>` | The actual commands for your stack |
+Phase 2 gates on first manual publish if your package isn't on npm yet
+(npm requires the name to exist before OIDC trust can be configured —
+this is unavoidable).
 
-If your repo is **single-package**, delete the monorepo block (it's
-clearly marked).
+Phase 3 chains into `/solo-npm:trust` to configure OIDC Trusted
+Publishing.
 
-If your repo is a **monorepo**, keep the monorepo block and replace
-`<MAIN_PACKAGE_DIR>` with the path to the package whose version is
-canonical (e.g., `packages/core`).
+Phase 4 prints a summary.
 
-## 4. Customize `verify/SKILL.md` if needed
+## 4. (Manual path) If you want to skip `/solo-npm:init`
 
-The default `/solo-npm:verify` skill runs lint + test + build. Edit
-`.claude/skills/verify/SKILL.md` to add anything else your
-stack needs:
-
-- `pnpm test:e2e` for e2e tests
-- `pnpm typecheck` if separate from lint
-- Coverage gates, license audits, bundle size limits
-
-## 5. Verify prerequisites
-
-Make sure you have:
-
-- A tag-triggered `.github/workflows/release.yml` that publishes via
-  `pnpm publish --no-git-checks`. The publish step relies on
-  `package.json#publishConfig` (set `access: "public"` and
-  `provenance: true` for public npm).
-- OIDC trust configured for your package. If not yet set up, install
-  the trust setup wizard:
-  ```
-  pnpm add -D npm-trust
-  pnpm exec npm-trust --init-skill setup
-  ```
-  Then invoke `/npm-trust:setup` in Claude Code.
-
-## 6. Run the skill
-
-In Claude Code, type:
+If you already have `release.yml`, `publishConfig`, etc., you can skip
+init and just configure OIDC trust:
 
 ```
-/solo-npm:release
+/solo-npm:trust
 ```
 
-The skill walks through:
+The trust skill handles authentication, dry-run validation, per-package
+configuration, and verification. Uses the
+[`npm-trust`](https://github.com/gagle/npm-trust) CLI under the hood —
+install it as a devDep for fast invocation:
 
-1. **Phase A**: pre-flight (silent if green)
-2. **Phase B**: shows the plan, asks **one** structured question
-3. **Phase C**: executes (commit, tag, push, verify on registry)
+```bash
+pnpm add -D npm-trust
+```
+
+(Optional — the skill falls back to `npx -y npm-trust@latest` if the
+CLI isn't a devDep.)
+
+## 5. Customize the consumer wrappers
+
+`/solo-npm:init` scaffolds workspace-shape-aware wrapper templates.
+Edit `.claude/skills/release/SKILL.md` and `.claude/skills/verify/SKILL.md`
+to add repo-specific narrative:
+
+- For monorepos: note the package layout, versioning strategy
+  (unified vs per-package), any `gagle/prepare-dist@v1` usage.
+- For private registries: the registry URL, the `NPM_TOKEN` secret
+  reference.
+- Custom verification commands (e.g., `pnpm nx run-many -t lint
+  typecheck build test` for Nx).
+
+The wrappers are thin — they invoke the marketplace baseline and add
+context. Don't reimplement the workflow logic.
+
+## 6. Run a release
+
+```
+/release
+```
+
+This loads your project's wrapper, which invokes `/solo-npm:release`
+internally. Both bodies sit in context; Claude reasons over the
+merged guidance.
+
+The release skill walks through:
+
+1. **Phase A**: pre-flight (`/verify` + `npm-trust --doctor`; silent if green)
+2. **Phase B**: plan + one `AskUserQuestion`
+3. **Phase C**: execute (commit, tag, push, watch CI, verify on registry)
+
+## 7. Operate the portfolio
+
+After your first release, the portfolio operations skills become
+useful:
+
+- **Daily**: `/solo-npm:status` for a quick dashboard.
+- **Monthly or on CVE alert**: `/solo-npm:audit` for security triage,
+  then `/solo-npm:deps` to apply upgrades.
+
+Both are read-friendly entry points — they don't mutate state without
+an `AskUserQuestion` gate.
 
 ## Troubleshooting
 
 - **`PACKAGE_NOT_PUBLISHED` from doctor**: your package isn't on npm
-  yet. See the
-  [first-publish ceremony](https://github.com/gagle/npm-trust#first-publish-chicken-and-egg)
-  in the npm-trust README.
+  yet. See Phase 2 of `/solo-npm:init` — first publish must be manual
+  via `npm publish --provenance=false --access public`. After that,
+  re-invoke `/solo-npm:init` and it'll continue to Phase 3 (trust).
 - **`REGISTRY_PROVENANCE_CONFLICT`**: `publishConfig.registry` points
   at a custom URL but `provenance: true` is set. Either remove
   provenance (custom registries can't sign with Sigstore) or change
   the registry back to public npm.
-- **CI fails on tag push**: the publish workflow likely needs OIDC
-  trust to be configured. Run the `/npm-trust:setup` wizard first.
+- **CI fails on tag push**: OIDC trust likely isn't configured. Run
+  `/solo-npm:trust`.
+- **`/help` doesn't show `/solo-npm:*` invocations**: the marketplace
+  + plugin install may not have completed. Run
+  `/plugin marketplace list` to confirm `gllamas-skills` is added,
+  then `/plugin install solo-npm@gllamas-skills`. Then `/reload-plugins`.
+- **`/release` (wrapper) and `/solo-npm:release` (baseline) both
+  appear**: that's expected — the wrapper is your customized entry
+  point; the baseline is invokable directly to bypass the wrapper.
+  Daily DX is `/release`.

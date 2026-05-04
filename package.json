@@ -1,7 +1,7 @@
 {
   "name": "solo-npm",
-  "version": "0.4.0",
-  "description": "Three skills for AI-driven solo dev shipping npm packages: /solo-npm:init scaffolds release.yml + publishConfig + .nvmrc on a fresh repo (public OR private registry). /solo-npm:release drives tag-triggered npm publishing with OIDC + provenance and one approval gate. /solo-npm:verify runs lint+test+build.",
+  "version": "0.5.0",
+  "description": "Seven skills for AI-driven solo-dev npm publishing — full lifecycle: bootstrap (/solo-npm:init, /solo-npm:trust), per-release (/solo-npm:release, /solo-npm:verify), portfolio operations (/solo-npm:status, /solo-npm:audit, /solo-npm:deps). OIDC + provenance. Release and verify are designed to be wrapped per-repo via thin wrappers.",
   "license": "MIT",
   "author": "Gabriel Llamas",
   "repository": {

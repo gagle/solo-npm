@@ -1,43 +1,47 @@
 ---
 name: init
 description: >
-  Initialize an existing repo with the opinionated solo-AI-dev release
-  workflow. Detects current state, asks ONE structured question, then
-  scaffolds release.yml + publishConfig + .nvmrc + npm-trust:setup
-  script (idempotent — only creates what's missing). Supports both
-  public npm (OIDC + provenance) and private/custom registries
-  (token auth via GitHub Actions secret). Composes with
-  /solo-npm:release and the npm-trust CLI.
+  Bootstrap a fresh repo for tag-triggered npm publishing with OIDC +
+  provenance. Phase 1 scaffolds release.yml + publishConfig + .nvmrc +
+  consumer wrappers (.claude/skills/release/, .claude/skills/verify/) +
+  .claude/settings.json. Phase 2 gates on first manual publish if the
+  package isn't on npm yet. Phase 3 chains into /solo-npm:trust for OIDC
+  config. Phase 4 done. Use once per fresh repo; safe to re-invoke
+  (idempotent — never overwrites existing artifacts).
 ---
 
-# Init Solo NPM
+# Init
+
+The umbrella skill for fresh-repo bootstrap. Scaffolds the GitHub side,
+gates on first publish, then composes with `/solo-npm:trust` for the
+npm side. Idempotent — re-invoke any time, only creates what's missing.
 
 ## Who this is for
 
-You have an existing repo and want to add the opinionated solo-AI-dev
-release workflow: tag-triggered CI publishing with one
-`AskUserQuestion` approval gate, OIDC + SLSA provenance for public
-npm, or token-based auth for private/custom registries. Run this skill
-once; then `/solo-npm:release` works out of the box.
+You have a repo (existing or new) and want to add the opinionated
+solo-AI-dev release workflow: tag-triggered CI publishing with one
+`AskUserQuestion` approval gate, OIDC + SLSA provenance for public npm,
+or token-based auth for private/custom registries. Run this skill once;
+then `/release` (your project's wrapper) just works.
 
 ## How it works
 
-Three-phase flow with **one** human approval gate. Idempotent — never
-overwrites existing artifacts. Safe to run multiple times.
+Four phases. Idempotent — never overwrites existing artifacts. Safe to
+run multiple times.
 
-- **Phase A** detects existing repo state (silent reads).
-- **Phase B** renders the plan and asks ONE `AskUserQuestion`.
-- **Phase C** generates / updates artifacts. Skip what's already there.
-- **Phase D** runs `npm-trust --doctor` to verify the result, then
-  prints the next-steps checklist.
+- **Phase 1** — detect state, render plan, ONE `AskUserQuestion`,
+  generate scaffolds + consumer wrappers + settings.json.
+- **Phase 2** — gate on first publish via `npm-trust --doctor`.
+- **Phase 3** — chain into `/solo-npm:trust` for OIDC config.
+- **Phase 4** — final summary + next-steps.
 
-## Phase A — Detect existing repo state
+## Phase 1 — Scaffold
 
-Read every signal that affects the plan. No writes.
+### 1a. Detect existing repo state (silent reads)
 
 | Source | Read | Used for |
 |---|---|---|
-| `package.json#name` | name | Placeholders, scope detection |
+| `package.json#name` | name | Wrapper templates, scope detection |
 | `package.json#version` | version | First-publish (`0.0.0`) vs. ongoing |
 | `package.json#private` | private flag | Whether to publish at all |
 | `package.json#publishConfig` | registry, access, provenance | Public vs. custom registry detection |
@@ -46,13 +50,14 @@ Read every signal that affects the plan. No writes.
 | `package.json#devDependencies.npm-trust` | devDep presence | Suggest `pnpm add -D npm-trust` if missing |
 | `.nvmrc` | content | Skip if already pinning ≥24 |
 | `.npmrc` (project) | `registry=`, `@scope:registry=`, `_authToken=` | Detect scope mappings, auth refs |
-| `.github/workflows/*.yml` | filenames + content | Skip release.yml if exists; ci.yml awareness |
+| `.github/workflows/*.yml` | filenames + content | Skip release.yml if exists |
 | `pnpm-workspace.yaml` / `package.json#workspaces` | presence | Single-package vs. monorepo |
-| `git remote get-url origin` | URL | `<REPO_SLUG>` placeholder inference |
-| `.claude/skills/release/` | presence | Whether to suggest re-install |
-| `.claude/skills/setup/` | presence | Whether to suggest install |
+| `nx.json` | presence | Nx monorepo flavor |
+| `git remote get-url origin` | URL | Repo slug inference |
+| `.claude/skills/release/`, `.claude/skills/verify/` | presence | Wrapper templates: skip if exist |
+| `.claude/settings.json` | extraKnownMarketplaces, enabledPlugins | Merge if exists |
 
-## Phase B — Plan + ONE `AskUserQuestion`
+### 1b. Render plan + ONE `AskUserQuestion`
 
 Render a summary block to chat (visible in history):
 
@@ -61,7 +66,7 @@ Init plan for <PACKAGE_NAME> @ v<VERSION>:
 
 Detected:
   Repo:       <REPO_SLUG>
-  Workspace:  <single-package | pnpm-workspace | npm-workspace>
+  Workspace:  <single-package | pnpm-workspace | nx-monorepo>
   Registry:   <public npm | scoped private (@scope at <URL>) | fully private (<URL>)>
   Workflows:  <list of *.yml files>
 
@@ -71,8 +76,11 @@ Will create (only if missing):
   [✓] package.json#scripts.npm-trust:setup
   [✓] .nvmrc
   [✓] .github/workflows/release.yml  (public OIDC | private token)
-  [—] .npmrc                          (only for scoped private registry)
-  [—] CONTRIBUTING.md                 (optional — solo-dev template)
+  [✓] .claude/skills/release/SKILL.md  (thin wrapper)
+  [✓] .claude/skills/verify/SKILL.md   (thin wrapper)
+  [✓] .claude/settings.json            (marketplace + plugin)
+  [—] .npmrc                            (only for scoped private registry)
+  [—] CONTRIBUTING.md                   (optional — solo-dev template)
 
 Will skip (already present):
   [-] <list of skipped artifacts with reasons>
@@ -86,31 +94,27 @@ yet).
 - question: `"Apply the plan above?"`
 - multiSelect: `false`
 - options:
-  1. `Proceed` (Recommended) — run Phase C with the plan as shown
+  1. `Proceed` (Recommended) — run scaffolding with the plan as shown
   2. `Customize` — open follow-up questions (registry kind override,
-     monorepo block override, CONTRIBUTING.md include/skip)
+     CONTRIBUTING.md include/skip)
   3. `Abort` — no changes; end the skill
 
-If `Customize` is selected:
+If `Customize` is selected and registry kind couldn't be auto-detected,
+ask via `AskUserQuestion`:
 
-- If registry kind couldn't be auto-detected (no existing
-  `publishConfig.registry`, no `.npmrc#registry` or `@scope:registry`),
-  ask via `AskUserQuestion`:
-  - header: `"Registry"`
-  - options: `Public npm` / `Scoped private` / `Fully private` / `Abort`
-  - For `Scoped private` or `Fully private`, follow up with a free-text
-    prompt for the registry URL.
+- header: `"Registry"`
+- options: `Public npm` / `Scoped private` / `Fully private` / `Abort`
+- For `Scoped private` or `Fully private`, follow up with a free-text
+  prompt for the registry URL.
 
-## Phase C — Generate / update artifacts
+### 1c. Generate / update artifacts
 
 **Idempotent**: only create what's missing. Never overwrite existing
-hand-tuned content silently. The user sees what's untouched in the
-plan.
+hand-tuned content silently.
 
-### `package.json` updates
+#### `package.json` updates
 
-Read, modify the parsed object, write back. Preserve formatting where
-possible (use the same indent the file already uses).
+Read, modify the parsed object, write back. Preserve formatting.
 
 **Fields to add ONLY if missing**:
 
@@ -131,7 +135,9 @@ possible (use the same indent the file already uses).
     "registry": "<PRIVATE_REGISTRY_URL>"
   },
 
-  // scripts.npm-trust:setup:
+  // scripts.npm-trust:setup — calls the npm-trust CLI directly (no Claude
+  // needed). Useful as a quick non-interactive shorthand alongside
+  // /solo-npm:trust:
   "scripts": {
     "npm-trust:setup": "npm-trust --auto --repo <REPO_SLUG> --workflow release.yml"
   }
@@ -142,13 +148,13 @@ For **private** registries, `provenance: true` is **omitted** —
 Sigstore is public-npm-only. Including it would trigger
 `REGISTRY_PROVENANCE_CONFLICT` in the doctor.
 
-### `.nvmrc`
+#### `.nvmrc`
 
 If missing, write `24\n`. Otherwise leave alone.
 
-### `.github/workflows/release.yml`
+#### `.github/workflows/release.yml`
 
-If missing, pick template based on the registry kind decision in Phase B.
+If missing, pick template based on the registry kind decision in 1b.
 
 **Public template** (OIDC + provenance):
 
@@ -215,14 +221,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
-`actions/setup-node@v4` with `registry-url` + `always-auth: true`
-writes a temporary `.npmrc` at job runtime that pulls auth from
-`NODE_AUTH_TOKEN`. No committed `.npmrc` needed for auth.
-
-### `.npmrc` (project root, optional)
+#### `.npmrc` (project root, optional)
 
 **Only generate** for scoped private registry. Mappings only — never
-auth tokens (those live in `NODE_AUTH_TOKEN` env / GitHub secrets).
+auth tokens.
 
 ```
 @scope:registry=<PRIVATE_REGISTRY_URL>
@@ -231,88 +233,212 @@ auth tokens (those live in `NODE_AUTH_TOKEN` env / GitHub secrets).
 If `.npmrc` already exists, leave existing lines untouched and append
 the scope mapping if not present.
 
-### `solo-npm:release` skill placeholders
+#### `.claude/skills/release/SKILL.md` — thin wrapper
 
-If `.claude/skills/release/SKILL.md` exists with
-placeholders, fill them with detected values:
+If missing, scaffold a workspace-shape-aware thin wrapper:
 
-- `<PACKAGE_NAME>` → from `package.json#name`
-- `<REPO_SLUG>` → from `git remote get-url origin`
-- `<RELEASE_WORKFLOW>` → `release.yml`
+**Single-package template:**
 
-If the skill is not yet installed (no
-`.claude/skills/release/`), Phase D's next-steps prints the
-`/plugin install` command.
+```yaml
+---
+name: release
+description: Release <PACKAGE_NAME> — wraps /solo-npm:release for this repo.
+---
 
-### Strip the monorepo block per detected layout
+# Release (<PACKAGE_NAME>)
 
-For **single-package** repos, remove the monorepo block from
-`release/SKILL.md` (clearly delimited in the template). For
-**monorepos**, keep the monorepo block.
+Composes /solo-npm:release with this repo's specifics.
 
-### `CONTRIBUTING.md` (optional)
+## Repo context
+
+- Workspace: single package at repo root
+- Repo slug: `<REPO_SLUG>`
+- Workflow: `release.yml`
+- Verification: `/verify` runs <DETECTED_VERIFY_COMMANDS>
+
+## Workflow
+
+Invoke `/solo-npm:release` for the opinionated three-phase baseline.
+
+## Deviations from the baseline
+
+(none)
+```
+
+**Monorepo template (pnpm/Nx):**
+
+```yaml
+---
+name: release
+description: Release <PACKAGE_NAME> packages — wraps /solo-npm:release with monorepo specifics.
+---
+
+# Release (<PACKAGE_NAME>)
+
+Composes /solo-npm:release with this repo's specifics.
+
+## Repo context
+
+- Workspace: <pnpm | Nx> monorepo at `<WORKSPACE_GLOB>`
+- Versioning: <unified across all packages | per-package> — <strategy details>
+- Repo slug: `<REPO_SLUG>`
+- Workflow: `release.yml`
+- Verification: `/verify` runs <DETECTED_VERIFY_COMMANDS>
+
+## Workflow
+
+Invoke `/solo-npm:release` for the opinionated three-phase baseline.
+The repo context above tells you what to expect for workspace shape and
+verification commands.
+
+## Deviations from the baseline
+
+(none today)
+```
+
+Placeholders to substitute from detected state:
+- `<PACKAGE_NAME>` from `package.json#name`
+- `<REPO_SLUG>` from `git remote get-url origin`
+- `<WORKSPACE_GLOB>` from `pnpm-workspace.yaml` or `package.json#workspaces[0]`
+- `<DETECTED_VERIFY_COMMANDS>` synthesized from `package.json#scripts`
+  (or `pnpm nx run-many -t lint typecheck build test` for Nx)
+
+If `.claude/skills/release/` already exists, **skip** — don't overwrite
+the user's wrapper.
+
+#### `.claude/skills/verify/SKILL.md` — thin wrapper
+
+If missing, scaffold:
+
+```yaml
+---
+name: verify
+description: Verify <PACKAGE_NAME> — wraps /solo-npm:verify with this repo's verification commands.
+---
+
+# Verify (<PACKAGE_NAME>)
+
+Composes /solo-npm:verify with this repo's specifics.
+
+## Repo context
+
+<DETECTED_VERIFY_LIST>
+
+## Workflow
+
+Invoke `/solo-npm:verify` for the opinionated baseline. Run the
+commands above; surface failures with full output.
+```
+
+`<DETECTED_VERIFY_LIST>` is a bulleted list of detected scripts:
+- Single-package: `- Lint: pnpm lint` / `- Test: pnpm test` / `- Build: pnpm build` (only those present in scripts)
+- Nx monorepo: `- Verification: pnpm nx run-many -t lint typecheck build test`
+
+If `.claude/skills/verify/` already exists, **skip**.
+
+#### `.claude/settings.json` — marketplace + plugin pinning
+
+If missing, create with:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "gllamas-skills": {
+      "source": {
+        "source": "github",
+        "repo": "gagle/solo-npm"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "solo-npm@gllamas-skills": true
+  }
+}
+```
+
+If existing, **merge keys** — add `extraKnownMarketplaces.gllamas-skills`
+and `enabledPlugins["solo-npm@gllamas-skills"]: true` if not already
+present. Preserve any other keys in the file.
+
+#### `CONTRIBUTING.md` (optional)
 
 If user opted in via `Customize` AND no `CONTRIBUTING.md` exists,
-write the AI-only solo-dev template (see
-`docs/contributing-template.md` in this plugin for the canonical
+write the AI-only solo-dev template (see plugin docs for the canonical
 shape).
 
-## Phase D — Run doctor + print next steps
+### 1d. Commit + push (gated)
 
-### Run the doctor
+After scaffolds are written, surface a diff summary and call
+`AskUserQuestion`:
+
+- header: `"Commit scaffolds"`
+- options: `Commit + push (Recommended)` / `Commit only` / `Stage only` / `Skip`
+
+Default commit message: `chore: bootstrap solo-npm release workflow`.
+
+## Phase 2 — First-publish gate
+
+Run the doctor:
 
 ```bash
 pnpm exec npm-trust --doctor --json --workflow release.yml
 ```
 
-Surface any issues. The new `npm-trust@0.7.0` checks
-(`WORKFLOW_AUTH_MISMATCH`, `NPMRC_REGISTRY_DIVERGES`,
-`NPMRC_LITERAL_TOKEN`, `WORKFLOW_MISSING_AUTH_SECRET`) catch most
-misconfigs.
+If `issues[]` contains `PACKAGE_NOT_PUBLISHED`:
 
-If doctor reports `WORKFLOW_MISSING_AUTH_SECRET` (private path),
-that's expected — surface the secret name to the user as a reminder.
+> **Stop here for first publish.**
+>
+> The following packages need a manual first publish (npm requires the
+> name to exist on the registry before OIDC trust can be configured):
+>
+> - <pkg-1>
+> - <pkg-2>
+>
+> Steps:
+>
+> 1. Authenticate: `npm login` (interactive, one-time per machine).
+> 2. Manually publish each: `npm publish --provenance=false --access public`.
+>    (No tag yet; this is the deliberate "claim the name" step.)
+> 3. Re-invoke `/solo-npm:init` once published — it'll skip Phase 1
+>    (idempotent) and continue to Phase 3.
 
-### Next-steps checklist
+Then call `AskUserQuestion`:
 
-**Public path**:
-
-```
-Init done. Next steps:
-
-1. pnpm add -D npm-trust   (if not already a devDep)
-2. pnpm exec npm-trust --init-skill setup
-3. If <PACKAGE_NAME> isn't on npm yet (first publish):
-   - npm publish --provenance=false --access public   (one-time, web 2FA)
-   - Then run /npm-trust:setup to enable OIDC trust
-4. From here on: /solo-npm:release
-```
-
-**Private path**:
-
-```
-Init done. Next steps:
-
-1. pnpm add -D npm-trust   (optional — for the doctor)
-2. In GitHub Settings → Secrets, add `NPM_TOKEN` with your registry
-   auth token. The release workflow reads it as NODE_AUTH_TOKEN.
-3. If <PACKAGE_NAME> isn't on the registry yet:
-   - Configure registry auth locally (~/.npmrc or env)
-   - npm publish   (first publish from local; provenance N/A)
-4. From here on: /solo-npm:release
-```
-
-## Phase E (optional) — run common next steps
-
-After Phase D's checklist, optionally call `AskUserQuestion`:
-
-- header: `"Continue"`
+- header: `"First publish"`
+- question: `"Status?"`
+- multiSelect: `false`
 - options:
-  1. `Run pnpm add -D npm-trust` — execute the install now
-  2. `Install setup skill` — run `pnpm exec npm-trust
-     --init-skill setup`
-  3. `Both` — run both
-  4. `Just print, I'll run them` — finish silently
+  1. `I just published — continue to Phase 3` — proceed to trust config
+  2. `Skip Phase 3 — I'll run /solo-npm:trust later` — end gracefully
+  3. `Abort` — stop the skill
+
+If no `PACKAGE_NOT_PUBLISHED` issues, skip the gate; proceed to Phase 3
+silently.
+
+## Phase 3 — Configure OIDC trust
+
+Invoke `/solo-npm:trust` to configure OIDC Trusted Publishing for all
+packages. The trust skill is itself a guided wizard — it'll handle
+authentication, dry-run validation, per-package configuration, and
+verification.
+
+If the user already has trust configured for some packages and just
+added new ones, `/solo-npm:trust` filters via `--only-new` so it
+configures only what's needed.
+
+## Phase 4 — Done
+
+Print a final summary:
+
+```
+Init complete.
+  Scaffolded:           <list of artifacts created>
+  Skipped (existing):   <list of artifacts left alone>
+  First publish:        <complete | pending — see Phase 2>
+  Trust:                <configured for N packages | skipped | pending publish>
+
+Next: /release   (your project's wrapper around /solo-npm:release)
+```
 
 ## Idempotency contract
 
@@ -325,19 +451,22 @@ no-op (zero diff) for these artifacts:
 - `.nvmrc` (if exists, regardless of content)
 - `.github/workflows/release.yml` (if exists, regardless of content)
 - `.npmrc` (existing lines untouched; only append scope mapping if not present)
+- `.claude/skills/release/`, `.claude/skills/verify/` (if exists, skip)
+- `.claude/settings.json` (existing keys preserved; only merge in marketplace + plugin)
 - `CONTRIBUTING.md` (if exists)
 
 The skill never overwrites hand-tuned content. The user sees what's
-skipped in Phase B's plan summary.
+skipped in Phase 1b's plan summary.
 
 ## What this skill does NOT do
 
-- Does NOT enable OIDC trust — that's `/npm-trust:setup`'s job.
 - Does NOT do the first publish — chicken-and-egg requires a one-time
-  classic publish from local. Phase D's checklist documents this.
-- Does NOT touch `.git/`, `~/.npmrc`, GitHub repo settings, or
-  branch protection.
-- Does NOT auto-add a GitHub Actions secret — that's a manual step
-  for security (token never touches the agent's context).
-- Does NOT migrate consumer scripts or change package name — pure
-  scaffold of missing scaffolding.
+  classic publish from local. Phase 2 documents this and waits.
+- Does NOT touch `.git/`, `~/.npmrc`, GitHub repo settings, or branch
+  protection.
+- Does NOT auto-add a GitHub Actions secret — that's a manual step for
+  security (token never touches the agent's context).
+- Does NOT migrate consumer scripts or change package name.
+- Does NOT install the marketplace plugin — that's done by Claude Code
+  when the user trusts the folder + accepts the install prompt
+  triggered by the committed `.claude/settings.json`.

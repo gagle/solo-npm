@@ -11,15 +11,7 @@
         "source": "github",
         "repo": "gagle/solo-npm"
       },
-      "description": "Init + release + verify skills for tag-triggered npm publishing with OIDC + provenance. Designed for AI-driven solo dev."
-    },
-    {
-      "name": "npm-trust",
-      "source": {
-        "source": "github",
-        "repo": "gagle/npm-trust"
-      },
-      "description": "OIDC trust setup wizard for npm Trusted Publishing. Composes with solo-npm."
+      "description": "Seven skills for the full npm publishing lifecycle: bootstrap (init, trust), per-release (release, verify), portfolio operations (status, audit, deps). OIDC + provenance; AI-driven solo-dev workflows."
     }
   ]
 }

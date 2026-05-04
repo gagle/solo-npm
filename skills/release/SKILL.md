@@ -1,16 +1,22 @@
 ---
 name: release
 description: >
-  Designed for AI-driven solo dev. Tag-triggered npm release with OIDC
-  provenance and ONE human approval — that's the only place a human is
-  in the loop, and it's a structured selector, not a free-text prompt.
-  Three phases: pre-flight (silent if green), plan (one AskUserQuestion),
-  execute (silent through verification). Composes with /solo-npm:verify.
-  Supports pre-release versions, public + custom registries,
-  single-package + monorepo.
+  Generic opinionated baseline for tag-triggered npm releases with OIDC
+  provenance and ONE human approval. Three phases: pre-flight (silent if
+  green), plan (one AskUserQuestion), execute (silent through verification).
+  Auto-detects workspace shape, repo slug, packages, and workflow via
+  `npm-trust --doctor`. Composes with /solo-npm:verify. Wrap via
+  .claude/skills/release/SKILL.md for repo-specific narrative; invoke
+  directly only for the unmodified flow.
 ---
 
 # Release
+
+> **This is the opinionated baseline.** Consumer repos typically wrap it
+> via `.claude/skills/release/SKILL.md` to add repo-specific narrative
+> (workspace shape, prepare-dist usage, custom verification commands).
+> Invoke `/solo-npm:release` directly only when you want the unmodified
+> baseline.
 
 ## Who this is for
 
@@ -26,8 +32,9 @@ review code, no second pair of human eyes. You want releases that are:
 
 This skill drives the whole flow end-to-end with **one** human
 checkpoint (a structured `AskUserQuestion` selector — unmissable,
-unmistakable). Type `/solo-npm:release`, review the plan once, click `Proceed`,
-get a notification when the tarball is on npm with provenance.
+unmistakable). Type `/release` (or `/solo-npm:release` for the bare
+baseline), review the plan once, click `Proceed`, get a notification
+when the tarball is on npm with provenance.
 
 ## How it works
 
@@ -40,21 +47,23 @@ condition.
   `AskUserQuestion` selector.
 - **Phase C** runs end-to-end after approval. Halt on first failure.
 
-## Placeholders
+## Auto-detection
 
-After installing this skill via the marketplace, edit this file to fill
-in your repo's specifics:
+Everything repo-specific is auto-detected from the working tree. No
+hand-editing required:
 
-| Placeholder | Example | What it controls |
-|---|---|---|
-| `<PACKAGE_NAME>` | `rfc-bcp47` | npm view target |
-| `<REPO_SLUG>` | `gagle/rfc-bcp47` | compare URLs in CHANGELOG |
-| `<RELEASE_WORKFLOW>` | `release.yml` | doctor's `--workflow` filter |
-| `<MAIN_PACKAGE_DIR>` | `packages/core` | (Monorepo) where the canonical version lives |
-| Monorepo block | (delete if single-package) | iterate `packages/*` |
-| `<LINT_CMD>` | `pnpm run lint` | fallback when `/solo-npm:verify` skill not installed |
-| `<TEST_CMD>` | `pnpm test` | fallback when `/solo-npm:verify` skill not installed |
-| `<BUILD_CMD>` | `pnpm run build` | fallback when `/solo-npm:verify` skill not installed |
+| Value | Source |
+|---|---|
+| Workspace shape | `npm-trust --doctor --json` (`workspace.shape`) |
+| Repo slug | `git remote get-url origin` (parsed) OR doctor's `repo.inferredSlug` |
+| Package name(s) | `package.json#name` (single) OR each `packages/*/package.json#name` (monorepo) |
+| Main package dir (monorepo) | First entry in `pnpm-workspace.yaml#packages` OR doctor's `workspace.packages[0]` |
+| Release workflow | `.github/workflows/release.yml` if it exists; doctor's `workflows[]` if ambiguous |
+| Lint/test/build commands | From `/solo-npm:verify` skill (composes); fallback `pnpm run lint && pnpm test && pnpm run build` |
+
+If a wrapper at `.claude/skills/release/SKILL.md` provides explicit
+overrides (e.g., "the publish workflow is `release-monorepo.yml`"), use
+those values instead of auto-detection.
 
 ## Phase A — Pre-flight
 
@@ -69,8 +78,10 @@ proceed.
 
 ### A.2 Run /solo-npm:verify
 
-Invoke the `/solo-npm:verify` skill. (If `/solo-npm:verify` is not installed, fall back
-to running `<LINT_CMD> && <TEST_CMD> && <BUILD_CMD>` inline.)
+Invoke the `/solo-npm:verify` skill (or the project's `/verify` wrapper
+if one exists). If neither is available, fall back to the project's
+verification commands (detected from `package.json#scripts.lint`,
+`package.json#scripts.test`, `package.json#scripts.build`).
 
 If verification fails, **STOP** and surface the error.
 
@@ -86,7 +97,7 @@ Parse the JSON. Branch on `summary` and `issues[].code`:
 |---|---|
 | `summary.fail > 0` | **STOP**, surface the failing issue |
 | `WORKSPACE_NOT_DETECTED`, `REPO_NO_REMOTE`, `WORKFLOWS_NONE` | **STOP** |
-| `PACKAGE_NOT_PUBLISHED` for `<PACKAGE_NAME>` | **STOP** — first-publish ceremony needed; see `/npm-trust:setup` |
+| `PACKAGE_NOT_PUBLISHED` for a package | **STOP** — first-publish ceremony needed; see `/solo-npm:trust` (or `/solo-npm:init` for full bootstrap) |
 | `AUTH_NOT_LOGGED_IN` | **Ignore** — tag-triggered CI publishes via OIDC; local auth doesn't matter |
 | `PACKAGE_TRUST_DISCREPANCY` | **Ignore (informational)** — registry has provenance even when `npm trust list` is empty |
 | `WORKFLOWS_AMBIGUOUS` | Should not fire (`--workflow` was passed). If it does, **STOP** and ask the user which workflow is the publish workflow |
@@ -111,7 +122,7 @@ Call this `LATEST_TAG`. If empty → first release; ask the user via
 
 ### B.2 Detect version mode
 
-Parse `package.json#version` (or `<MAIN_PACKAGE_DIR>/package.json#version`
+Parse `package.json#version` (or the main package's `package.json#version`
 for monorepos). Two modes:
 
 - **Stable** — current version matches `^\d+\.\d+\.\d+$`
@@ -262,8 +273,9 @@ git push
 
 ### C.4 Final pre-tag verification
 
-Re-invoke `/solo-npm:verify` against the bumped state. Aborts here are rare but
-not hypothetical (e.g., a test that depends on `package.json#version`).
+Re-invoke `/solo-npm:verify` (or `/verify` wrapper) against the bumped
+state. Aborts here are rare but not hypothetical (e.g., a test that
+depends on `package.json#version`).
 
 If anything fails, **STOP**. Recovery: fix the issue, restart from
 Phase A. The release commit is on origin but no tag has been pushed
@@ -276,7 +288,7 @@ git tag "v${NEXT_VERSION}"
 git push --tags
 ```
 
-This triggers `.github/workflows/<RELEASE_WORKFLOW>` on the new tag.
+This triggers the publish workflow on the new tag.
 
 ### C.6 Watch CI
 
@@ -357,9 +369,9 @@ End the skill.
 - Auto-rerun CI on failure (most failures need human investigation).
 - Auto-fallback to classic publish on CI failure (would lose provenance attestation).
 - Auto-create `release.yml` or bootstrap trust on first run — those are
-  the `/npm-trust:setup` skill's job (see
-  [`gagle/npm-trust`](https://github.com/gagle/npm-trust)); this skill
-  assumes the env is already provisioned.
+  the `/solo-npm:init` skill's job (which composes with `/solo-npm:trust`
+  for the npm-side OIDC config); this skill assumes the env is already
+  provisioned.
 - Push branches other than `main` — assumes you're on the canonical
   release branch.
 - Auto-merge PRs — PRs are disabled in this workflow.
