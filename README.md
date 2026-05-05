@@ -25,7 +25,7 @@ Twelve slash commands wrapping <code>npm publish</code>, <code>version</code>, <
   'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
 flowchart LR
     subgraph BS["BOOTSTRAP — one-time"]
         direction TB
@@ -76,7 +76,6 @@ flowchart LR
 - [Architecture](#architecture)
 - [Diagnostic prompts (symptom → skill)](#diagnostic-prompts-symptom--skill)
 - [Advanced](#advanced)
-- [Out of scope (deliberate)](#out-of-scope-deliberate)
 - [See also](#see-also)
 
 ---
@@ -418,9 +417,9 @@ solo-npm is the **release operator**. It deliberately does NOT cover development
   'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
 flowchart LR
-    subgraph AS["addyosmani/agent-skills — DEVELOPMENT"]
+    subgraph AS["agent-skills — DEVELOPMENT"]
         spec["spec / plan"]
         build["build / test"]
         review["review / debug"]
@@ -517,7 +516,7 @@ This distinction matters when reasoning about composition: operator skills are t
   'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
 flowchart LR
     subgraph CAPS["npm operator capabilities"]
         publish["publish"]
@@ -570,7 +569,7 @@ flowchart LR
   'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
 flowchart TD
     user["User types /release"]
     wrapper["Consumer wrapper<br/>.claude/skills/release/SKILL.md<br/>(repo-specific narrative)"]
@@ -608,7 +607,7 @@ The wrapper is just a thin file with repo context (workspace shape, verify comma
   'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
 flowchart TD
     start(["User: /release"]) --> phaseA["Phase A — pre-flight<br/>verify · trust cache · audit cache"]
     phaseA -->|missing trust| toTrust["auto-chain → /solo-npm:trust"]
@@ -744,27 +743,6 @@ The plugin entries live in `.claude/commands/<name>.md` (flat markdown), not `sk
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for details.
 
 </details>
-
----
-
-## Out of scope (deliberate)
-
-The following are deliberate non-goals — labelling them prevents scope creep. Each lists the trigger that would make us reconsider.
-
-| Non-goal | Why | Revisit when |
-|---|---|---|
-| Wrapper templates for `/prerelease` and `/hotfix` in consumer repos | Both are rare / one-off; auto-detection covers per-repo specifics | A consumer repo develops a recurring per-repo quirk that the agent has to re-discover every invocation |
-| Forward parallel pre-release on a `next` branch (semantic-release's `branches: ['main', { name: 'next', prerelease: true }]`) | Solo-dev convention is "pause stable feature work during pre-release". `/hotfix` covers urgent stable fixes during pre-release. | A user genuinely needs continuous feature work on stable AND pre-release in parallel (rare for solo-dev) |
-| Per-package pre-release identifiers in monorepos (one package on `beta` while others stay stable) | Different paradigm — independent versioning vs solo-npm's unified versioning. Touches every skill + cache architecture. | Restructuring the repo (move the diverging package out) is the right answer instead |
-| `/solo-npm:hotfix` accepting multiple majors in one invocation | Fix implementation often differs per major (different APIs across majors); sequential invocation prevents accidental "fix in wrong major" errors | Strong evidence sequential invocation is meaningful friction for some workflow |
-| Auto-resolve cherry-pick conflicts | Resolution depends on intent (e.g., which side of a refactor wins); auto-merging is more dangerous than asking | Never — this is a correctness boundary, not a UX gap |
-| `npm unpublish` | 24h hard window; breaks consumer lockfiles. `/deprecate` is the gentle alternative and covers the use case. | Never — deprecation is the correct pattern for retiring versions |
-| `npm token` mgmt | OIDC Trusted Publishing obviates publish tokens for CI. Local read-only tokens are dev-time, not release infrastructure. | Granular tokens become required for CI (unlikely for OIDC-first solo-dev) |
-| `npm hook` (registry webhooks) | Niche — solo-dev typically uses GitHub webhooks instead. | Some platform requires npm hooks specifically |
-| `npm org` / `npm team` | Not relevant for solo-dev (paid-tier multi-account workflows). | solo-npm explicitly expands beyond solo-dev |
-| `npm pack` / `search` / `star` / `fund` | Not release operations — out-of-band tools. | Never |
-| `npm sbom` | Niche compliance (SLSA/SBOM intersection). Provenance via OIDC already covers most needs. | Compliance regime explicitly requires SBOM artifacts |
-| `npm access` flip post-publish | Rare; manual `npm access set` is fine. | Frequent enough to warrant automation (unlikely) |
 
 ---
 
