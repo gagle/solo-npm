@@ -2,11 +2,19 @@
   <title>solo-npm</title>
   <desc>AI skills for every npm operator capability solo devs use</desc>
 
-  <!-- Background -->
-  <rect width="800" height="200" fill="#111114"/>
+  <style>
+    .solo-text { fill: #1a1a1a; }
+    .tagline { fill: #5a5a5c; }
+    .corner-spark { fill: #b22e2d; opacity: 0.20; }
+    @media (prefers-color-scheme: dark) {
+      .solo-text { fill: #f0f0f0; }
+      .tagline { fill: #9a9a9c; }
+      .corner-spark { opacity: 0.35; }
+    }
+  </style>
 
-  <!-- Subtle decorative sparkles in the corners (light red, low opacity) -->
-  <g fill="#ff6b6a" opacity="0.35">
+  <!-- Subtle decorative corner sparkles -->
+  <g class="corner-spark">
     <path d="M 100,40 l 1.5,-7 l 1.5,7 l 7,1.5 l -7,1.5 l -1.5,7 l -1.5,-7 l -7,-1.5 l 7,-1.5 z"/>
     <path d="M 700,160 l 1.5,-7 l 1.5,7 l 7,1.5 l -7,1.5 l -1.5,7 l -1.5,-7 l -7,-1.5 l 7,-1.5 z"/>
     <path d="M 130,150 l 1,-5 l 1,5 l 5,1 l -5,1 l -1,5 l -1,-5 l -5,-1 l 5,-1 z"/>
@@ -16,45 +24,41 @@
   <!-- Centered wordmark group: "solo  ✦  npm" -->
   <g transform="translate(400 110)">
 
-    <!-- "solo" — white, ends to the left of the sparkle -->
-    <text x="-50" y="0"
+    <!-- "solo" — adaptive (dark in light mode, light in dark mode) -->
+    <text x="-50" y="0" class="solo-text"
           font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace"
           font-size="68" font-weight="700"
-          fill="#ffffff"
           text-anchor="end"
           dominant-baseline="middle">solo</text>
 
-    <!-- Sparkle ✦ — npm-red, sits between "solo" and "npm".
-         Drawn as a 4-pointed star path with concave sides.
-         Two layered stars give a subtle glow effect. -->
+    <!-- Sparkle ✦ — yellow/gold (AI accent), with halo + inner highlight -->
     <g>
-      <!-- Outer halo (lighter, larger, low opacity) -->
+      <!-- Outer halo (pale gold, larger, low opacity) -->
       <path d="M 0,-32 L 8,-8 L 32,0 L 8,8 L 0,32 L -8,8 L -32,0 L -8,-8 Z"
-            fill="#ff6b6a" opacity="0.25"/>
-      <!-- Main star (npm red) -->
+            fill="#fde68a" opacity="0.30"/>
+      <!-- Main star (vibrant gold) -->
       <path d="M 0,-24 L 7,-7 L 24,0 L 7,7 L 0,24 L -7,7 L -24,0 L -7,-7 Z"
-            fill="#cb3837"/>
-      <!-- Inner highlight (white, small) -->
+            fill="#f5c518"/>
+      <!-- Inner highlight (small, white) -->
       <path d="M 0,-8 L 2,-2 L 8,0 L 2,2 L 0,8 L -2,2 L -8,0 L -2,-2 Z"
             fill="#ffffff" opacity="0.85"/>
     </g>
 
-    <!-- "npm" — npm red, starts to the right of the sparkle -->
+    <!-- "npm" — darker npm red, visible on both light and dark backgrounds -->
     <text x="50" y="0"
           font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace"
           font-size="68" font-weight="700"
-          fill="#cb3837"
+          fill="#b22e2d"
           text-anchor="start"
           dominant-baseline="middle">npm</text>
 
   </g>
 
-  <!-- Tagline -->
-  <text x="400" y="175"
+  <!-- Tagline — adaptive muted gray -->
+  <text x="400" y="175" class="tagline"
         font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace"
         font-size="14" font-weight="400"
-        fill="#a8a4fd"
-        opacity="0.75"
+        opacity="0.85"
         text-anchor="middle">AI skills for every npm operator capability solo devs use</text>
 
 </svg>
