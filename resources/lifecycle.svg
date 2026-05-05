@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 220" style="background:transparent" role="img" aria-label="solo-npm lifecycle: you type a prompt, solo-npm wraps every npm command, done signed verified on npm">
+  <title>solo-npm lifecycle</title>
+  <desc>YOU type a prompt → solo-npm — 12 AI skills wrap every npm command → DONE — signed, verified, on npm</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0,0 L 10,5 L 0,10 Z" fill="#cb3837"/>
+    </marker>
+    <style>
+      .box-fill { fill: #cb3837; }
+      .box-stroke { stroke: #a02320; stroke-width: 2; }
+      .box-text { fill: #ffffff; font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace; }
+      .title { font-size: 32px; font-weight: 700; }
+      .subtitle { font-size: 16px; font-weight: 400; }
+      .arrow-line { stroke: #cb3837; stroke-width: 4; fill: none; }
+    </style>
+  </defs>
+
+  <!-- Box 1: YOU -->
+  <rect class="box-fill box-stroke" x="20" y="40" width="280" height="140" rx="8" ry="8"/>
+  <text class="box-text title" x="160" y="100" text-anchor="middle">YOU</text>
+  <text class="box-text subtitle" x="160" y="140" text-anchor="middle">type a prompt</text>
+
+  <!-- Arrow 1 -->
+  <line class="arrow-line" x1="305" y1="110" x2="350" y2="110" marker-end="url(#arrow)"/>
+
+  <!-- Box 2: solo-npm -->
+  <rect class="box-fill box-stroke" x="360" y="40" width="280" height="140" rx="8" ry="8"/>
+  <text class="box-text title" x="500" y="85" text-anchor="middle">solo-npm</text>
+  <text class="box-text subtitle" x="500" y="120" text-anchor="middle">12 AI skills</text>
+  <text class="box-text subtitle" x="500" y="148" text-anchor="middle">wrap every npm command</text>
+
+  <!-- Arrow 2 -->
+  <line class="arrow-line" x1="645" y1="110" x2="690" y2="110" marker-end="url(#arrow)"/>
+
+  <!-- Box 3: DONE -->
+  <rect class="box-fill box-stroke" x="700" y="40" width="280" height="140" rx="8" ry="8"/>
+  <text class="box-text title" x="840" y="85" text-anchor="middle">DONE</text>
+  <text class="box-text subtitle" x="840" y="125" text-anchor="middle">signed, verified,</text>
+  <text class="box-text subtitle" x="840" y="150" text-anchor="middle">on npm</text>
+
+</svg>

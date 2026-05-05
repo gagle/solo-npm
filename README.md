@@ -8,34 +8,9 @@
   <img src="https://img.shields.io/badge/Built_with-AI-7e47ff" alt="Built with AI" />
 </p>
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#cb3837',
-  'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a02320',
-  'lineColor':'#cb3837',
-  'secondaryColor':'#a02320',
-  'secondaryTextColor':'#ffffff',
-  'secondaryBorderColor':'#7d1c1a',
-  'tertiaryColor':'#7d1c1a',
-  'tertiaryTextColor':'#ffffff',
-  'tertiaryBorderColor':'#5a1413',
-  'background':'transparent',
-  'mainBkg':'#cb3837',
-  'secondBkg':'#a02320',
-  'tertiaryBkg':'#7d1c1a',
-  'clusterBkg':'transparent',
-  'clusterBorder':'#d0d0d0',
-  'titleColor':'#a02320',
-  'edgeLabelBackground':'#ffffff',
-  'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
-flowchart LR
-    you["YOU<br/>type a prompt"]
-    sn["solo-npm<br/>12 AI skills<br/>wrap every npm command"]
-    done["DONE<br/>signed, verified,<br/>on npm"]
-    you ==> sn ==> done
-```
+<p align="center">
+  <img src="./resources/lifecycle.svg" alt="solo-npm lifecycle: YOU type a prompt → solo-npm 12 AI skills wrap every npm command → DONE signed, verified, on npm" width="900">
+</p>
 
 > ### 🤖 Built to be driven by Claude
 >

@@ -46,7 +46,7 @@ every time.
 - **Marketplace plugin compatibility**: changes to `.claude-plugin/`
   manifests are validated against the Claude Code marketplace spec.
 - **AI-only contribution model**: PRs disabled at the GitHub level.
-- **Diagram-mirror convention**: when you edit the Mermaid block in `README.md` (the lifecycle hero diagram), mirror the change to `resources/diagrams/lifecycle.mmd`. The inline block in `README.md` is the source of truth; the `.mmd` copy exists for editor tooling (VS Code Mermaid preview, etc.). GitHub-flavored Markdown does not support importing external files into a rendered README, so the inline block can't go away.
+- **Visual assets are SVG only**: the README's hero banner (`resources/banner.svg`) and lifecycle diagram (`resources/lifecycle.svg`) are hand-written SVGs. No Mermaid blocks anywhere. Edit the SVG source directly; GitHub renders it via `<img>` tag. Camo cache busts on content-hash change.
 
 ## Dogfooding
 

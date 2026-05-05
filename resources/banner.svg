@@ -24,8 +24,13 @@
     <path d="M 670,55 l 1,-5 l 1,5 l 5,1 l -5,1 l -1,5 l -1,-5 l -5,-1 l 5,-1 z"/>
   </g>
 
-  <!-- Centered wordmark group: "solo  ✦  npm" -->
-  <g transform="translate(400 110)">
+  <!-- Centered wordmark group: "solo  ✦  npm".
+       Translated to (420, 110) — not (400, 110) — because "solo" (4 chars) is one
+       character wider than "npm" (3 chars), so equal padding from the sparkle
+       leaves the wordmark's visual center ~20px left of the sparkle. The +20
+       offset re-centers the wordmark on x=400 to vertically align with the
+       tagline below (also centered on x=400). -->
+  <g transform="translate(420 110)">
 
     <!-- "solo" — adaptive (dark in light mode, light in dark mode) -->
     <text x="-50" y="0" class="solo-text"
