@@ -214,6 +214,26 @@ Refresh `.solo-npm/state.json`:
 - `cache.trust.lastFullCheck = now` (the CI's successful publish proves trust still works for every package that just published).
 - For START operations: package was likely already in `cache.trust.configured`; no new entries needed.
 
+## Phase E — Stale `@next` cleanup offer (PROMOTE only)
+
+Skipped automatically for START and BUMP operations. Fires only after a successful PROMOTE — at which point `@next` may still point at the old beta version (npm doesn't auto-cleanup), and consumers running `npm i pkg@next` would still install the now-superseded beta instead of the stable.
+
+Surface an `AskUserQuestion` gate:
+
+```
+Header:   "Cleanup @next"
+Question: "Remove stale @next now? (it currently points at v${PREV_BETA_VERSION}, but @latest is now v${STABLE_VERSION})"
+Options:
+  - Yes — chain to /solo-npm:dist-tag cleanup-stale (Recommended)
+  - No — leave for later (you can run /solo-npm:dist-tag cleanup-stale anytime)
+```
+
+On Yes: invoke `/solo-npm:dist-tag cleanup-stale` (single-package or workspace-wide depending on this repo's scope). The dist-tag skill runs its own Phase A → D and returns.
+
+On No: end with a footer hint:
+
+> Promoted to v${STABLE_VERSION}. To cleanup @next later: `/solo-npm:dist-tag cleanup-stale`
+
 ## Failure modes
 
 | Failure | Where | Recovery |

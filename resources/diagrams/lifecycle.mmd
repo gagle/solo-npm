@@ -38,8 +38,14 @@ flowchart LR
         status["/solo-npm:status"]
         audit["/solo-npm:audit"]
         deps["/solo-npm:deps"]
+        distTag["/solo-npm:dist-tag"]
+        deprecate["/solo-npm:deprecate"]
+        owner["/solo-npm:owner"]
         audit --> deps
+        audit -.-> deprecate
+        status -.-> distTag
     end
     BS ==> PR
     PR <-.auto-chain.-> LT
     PR -.cache-aware.-> OP
+    PR -.post-major.-> deprecate

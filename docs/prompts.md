@@ -119,6 +119,43 @@ Scenario: active users on v1.5 hit a bug; main is in v2 development.
 | *"v1 users are reporting a parsing bug — fix it"* | Hotfix workflow. |
 | *"Patch the previous major"* | Hotfix. |
 
+### `/solo-npm:dist-tag` — post-publish dist-tag management
+
+Scenario: stale `@next` after promote, botched release rollback, or opt-in channel publish.
+
+| Prompt | What happens |
+|---|---|
+| *"Cleanup stale @next across all packages"* | Detects packages where `@next` points at a superseded pre-release; bulk `npm dist-tag rm` after gate. |
+| *"Repoint @latest to 1.5.2 — 1.6.0 has a bug"* | Repoints `@latest` (recovery before fix-forward). |
+| *"Add @canary to 1.6.0-experimental.2 on all packages"* | Adds the `@canary` tag pointing at the experimental version. |
+| *"Remove @next from @ncbijs/eutils"* | Single-package rm. |
+| *"What dist-tags are set on my packages?"* | Read-only `ls` — no gate, just renders the table. |
+| *"What dist-tags do my packages have?"* | Same. |
+
+### `/solo-npm:deprecate` — retire versions cleanly
+
+Scenario: post-major-release EOL, CVE response, bad-release recovery.
+
+| Prompt | What happens |
+|---|---|
+| *"Deprecate all 1.x with message 'v1.x is EOL — migrate to v2'"* | Mass-deprecate every 1.x version across the portfolio with one gate. |
+| *"Mark 1.6.0 as do-not-use because of a data bug"* | Single-version deprecation; agent derives "Do not use — data bug; upgrade to 1.6.1." |
+| *"Deprecate <2.0.0 across all packages"* | Range-bounded deprecation across portfolio. |
+| *"Undeprecate 1.5.0 of @ncbijs/eutils"* | Lifts the deprecation (sets message to `""`). |
+| *"Vulnerable to CVE-XXXX — deprecate the affected versions"* | Range deprecation triggered from /audit chain or directly. |
+
+### `/solo-npm:owner` — manage maintainers
+
+Scenario: bus-factor mitigation, ownership transfer, audit.
+
+| Prompt | What happens |
+|---|---|
+| *"Add @backup-maintainer to all my packages"* | Bulk owner add across portfolio after gate. |
+| *"Show me who can publish each package"* | Read-only `ls` portfolio audit; bus-factor risk highlighted. |
+| *"Audit ownership across portfolio"* | Same as above. |
+| *"Remove @old-collaborator from @ncbijs/eutils"* | Single-package rm; rejects sole-owner removal. |
+| *"Who has publish access to npm-trust?"* | Single-package owner list. |
+
 ## Compound real-world workflows
 
 ### Day 1: brand-new package → on npm with provenance
@@ -178,7 +215,15 @@ You:  Ship the next beta.
 
 You:  Promote v2 to stable.
        (agent runs /solo-npm:prerelease directly → state is pre-release →
-        Bump/Promote/Abort → user picks Promote → publishes 2.0.0 to @latest)
+        Bump/Promote/Abort → user picks Promote → publishes 2.0.0 to @latest →
+        Phase E offers /solo-npm:dist-tag cleanup-stale → user picks Yes →
+        @next removed from all affected packages)
+
+You:  [agent surfaces /release Phase G post-major gate]
+       "Deprecate v1.x now with message 'v1.x is EOL — migrate to v2.0.0+'?"
+       Yes / Customize / Defer
+       (user picks Yes → chains to /solo-npm:deprecate →
+        deprecates all 1.x versions across the portfolio with the migration message)
 ```
 
 ### Hotfix to v1 while v2-beta is in flight
@@ -210,6 +255,60 @@ You:  I saw the GHSA-xxxx CVE in tar-fs. Audit + fix.
         chains into /solo-npm:deps cve-tier-1 → upgrades tar-fs → /verify → commit)
 You:  Ship the patch to all affected packages.
        (agent runs /release → patch bump → v0.5.5 to @latest)
+```
+
+### CVE landed but upgrade is blocked
+
+Scenario: CVE affects dep used in v1.x, but upgrading the dep requires a breaking change you can't accept yet. Deprecate the affected versions to warn consumers, ship the upgraded version on v2.x via a major bump.
+
+```
+You:  GHSA-yyyy hits @ncbijs/* v1.x — upgrade is blocked by Node compat.
+You:  Audit it.
+       (agent runs /solo-npm:audit → finds Tier 1 advisories →
+        Phase 5 gate offers: Fix Tier 1 / Fix Tier 1+2 / Deprecate affected versions / Show details / Defer)
+You:  Pick "Deprecate affected versions"
+       (agent extracts version range from advisory's vulnerable_versions →
+        chains to /solo-npm:deprecate with RANGE=<2.0.0 and MESSAGE pre-filled with CVE info →
+        user reviews + Proceed → mass-deprecates 1.x versions →
+        consumers running `npm i @ncbijs/eutils@^1` see the warning)
+```
+
+### Botched release recovery
+
+Scenario: just shipped 1.6.0 with a bug. Need to repoint @latest to 1.5.2 immediately, then deprecate 1.6.0, then fix-forward.
+
+```
+You:  1.6.0 has a regression — repoint @latest to 1.5.2 across all packages.
+       (agent runs /solo-npm:dist-tag → operation=repoint, version=1.5.2, scope=all →
+        gate: "Repoint @latest from 1.6.0 → 1.5.2 on N packages?" → user Proceeds →
+        all @latest repointed; consumers running `npm i pkg` get 1.5.2 again)
+
+You:  Now mark 1.6.0 as do-not-use.
+       (agent runs /solo-npm:deprecate → range=1.6.0, scope=all,
+        message='Do not use — regression in <feature>; downgraded @latest to 1.5.2; fix coming in 1.6.1' →
+        user Proceeds → 1.6.0 deprecated everywhere)
+
+[fix lands]
+
+You:  Ship 1.6.1.
+       (agent runs /release → version 1.6.1 → @latest now points at 1.6.1)
+
+You:  [agent could surface /solo-npm:deprecate undeprecate offer for 1.6.0 if user wants —
+        otherwise the deprecation persists which is fine; 1.6.0 stays installed-but-warned]
+```
+
+### Bus-factor audit
+
+Scenario: ahead of vacation, want to make sure someone else can publish if needed.
+
+```
+You:  Show me who can publish each package.
+       (agent runs /solo-npm:owner → operation=ls, scope=all →
+        renders portfolio table → highlights sole-owner packages as bus-factor risk)
+
+You:  Add @backup-maintainer to all packages where I'm sole owner.
+       (agent runs /solo-npm:owner → operation=add, user=backup-maintainer, scope=all →
+        gate: "Add @backup-maintainer to N packages?" → user Proceeds → all packages now multi-owner)
 ```
 
 ### Resuming work in a previously-set-up repo (cross-machine)

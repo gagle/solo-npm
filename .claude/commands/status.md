@@ -145,14 +145,15 @@ and `/solo-npm:trust`. Status's job is to *show* state, not derive it.
 
 ### Stale-@next warning (above table, conditional)
 
-If any package has `dist-tags.next` pointing at a version that's been superseded by `dist-tags.latest` (i.e., `next` is a pre-release whose stable equivalent has already shipped to `latest`), surface a one-line warning above the table:
+If any package has `dist-tags.next` pointing at a version that's been superseded by `dist-tags.latest` (i.e., `next` is a pre-release whose stable equivalent has already shipped to `latest`), surface a warning above the table:
 
 ```
 ⚠ @next is stale on @ncbijs/eutils (points at 1.6.0-beta.3, but @latest is 1.6.0).
-   Consider: `npm dist-tag rm @ncbijs/eutils next` (registry hygiene).
+⚠ @next is stale on @ncbijs/blast  (points at 1.6.0-beta.3, but @latest is 1.6.0).
+   Cleanup: /solo-npm:dist-tag cleanup-stale
 ```
 
-One line per affected package. No action hint — this is informational; npm dist-tag cleanup is registry-side, outside solo-npm's scope.
+One line per affected package. The cleanup hint at the bottom invokes `/solo-npm:dist-tag` (skill #10) which handles the bulk `npm dist-tag rm` operation across all stale packages with one approval gate.
 
 ### Main table
 

@@ -198,11 +198,31 @@ If the report shows Tier 1 or 2 advisories, call `AskUserQuestion`:
      to the CVE-tier-1 packages
   2. `Fix Tier 1 + 2` — invoke `/solo-npm:deps` filtered to all
      auto-fixable advisories
-  3. `Show me details` — print full advisory text inline; no action
-  4. `Defer` — acknowledge; no action
+  3. `Deprecate affected versions` — invoke `/solo-npm:deprecate` with
+     the affected version range from the advisories. Useful when the
+     upgrade path is blocked (incompatible deps, breaking changes you
+     can't accept yet) but you still need to warn consumers off the
+     vulnerable versions.
+  4. `Show me details` — print full advisory text inline; no action
+  5. `Defer` — acknowledge; no action
 
 If Tier 1 + 2 are empty, skip the gate; the audit is complete after
 Phase 4.
+
+### Composition with `/solo-npm:deprecate`
+
+When the user picks "Deprecate affected versions", compute the version
+range from the advisories' `vulnerable_versions` field (combined across
+all Tier 1+2 advisories for the affected packages), then invoke
+`/solo-npm:deprecate` with:
+
+- `RANGE` = the combined vulnerable range (e.g., `<1.5.3` if 1.5.3 has
+  the fix; or specific versions like `1.4.0 || 1.4.1 || 1.4.2`)
+- `MESSAGE` pre-filled with: *"Vulnerable to <CVE-IDs> — upgrade to
+  <fixed-version> or later."*
+
+The deprecate skill runs its own Phase B gate so the user can review
+the proposed message and version list before applying.
 
 ## Composition with /solo-npm:deps
 

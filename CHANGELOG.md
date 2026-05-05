@@ -1,5 +1,98 @@
 # Changelog
 
+## v0.6.0 — npm operator coverage: three new skills + /verify pkg-check + framing alignment
+
+Major scope expansion driven by the npm operator-capabilities analysis (`docs/npm-coverage.md`). Three new skills close the four real gaps identified there; `/verify` gains a manifest-completeness step; the README narrative is reframed around the npm-operator-capability framing.
+
+### New skill: `/solo-npm:dist-tag` (#10)
+
+Manages `npm dist-tag` post-publish — the lever for channel cleanup, rollback after a botched release, opt-in channels (`@canary`, `@experimental`), and bulk portfolio operations. Five operations:
+
+- **add** — point a tag at a specific version
+- **rm** — remove a tag (rejects `@latest` removal; suggests `repoint` instead)
+- **ls** — list current dist-tags across the portfolio (read-only, no gate)
+- **repoint** — move an existing tag to a different version
+- **cleanup-stale** — bulk-remove `@next` where it points at a pre-release whose stable equivalent has shipped to `@latest`
+
+Foolproof `npm login` handoff in Phase A — `npm dist-tag` mutations are NOT covered by OIDC Trusted Publishing (only `npm publish` is). 200ms inter-call backoff for bulk operations to avoid registry rate limits. Phase D verifies each mutation landed.
+
+Composes with `/status` (acts on stale-`@next` warnings via the new explicit hint) and `/prerelease` PROMOTE (optional `AskUserQuestion` to chain into cleanup-stale after stable promote).
+
+Triggers from prompts like *"cleanup stale @next"*, *"repoint @latest to 1.5.2 — 1.6.0 has a bug"*, *"add @canary to 1.6.0-experimental.2"*, *"what dist-tags are set on my packages"*.
+
+### New skill: `/solo-npm:deprecate` (#11)
+
+Marks `npm` package versions deprecated (or undeprecates) with a custom message. Reversible. Safer than `npm unpublish` (which has a 24-hour hard window and breaks consumer lockfiles). Two operations:
+
+- **deprecate** — apply a message to a version, range, or every version satisfying a semver expression
+- **undeprecate** — lift the deprecation (set message to `""`)
+
+Range patterns: single version (`1.6.0`), major (`1.x`), comparator (`<2.0.0`, `>=1.0.0 <1.5.0`). Phase A explicitly rejects unbounded ranges (`*`, `x`, empty) for safety — must specify a concrete bound.
+
+Phase 0 prompt-context extraction handles natural language like *"deprecate all 1.x with message 'v1.x is EOL — migrate to v2'"*, *"mark 1.6.0 as do-not-use because of data bug"*, *"undeprecate 1.5.0 of @ncbijs/eutils"*.
+
+Foolproof `npm login` handoff (npm deprecate is not OIDC-covered). 200ms backoff. Already-in-target-state versions are silently skipped.
+
+Composes with `/release` Phase G (post-major auto-chain offer) and `/audit` Phase 5 (CVE response option).
+
+### New skill: `/solo-npm:owner` (#12)
+
+Manages npm package maintainers at portfolio scale. Three operations:
+
+- **ls** — list owners across the portfolio (read-only audit; highlights bus-factor risk where a package has only one owner)
+- **add** — add an npm user as a maintainer
+- **rm** — remove a maintainer (rejects sole-owner removal; warns on self-removal)
+
+Phase 0 extracts intent from prompts like *"add @backup-maintainer to all my packages"*, *"show me who can publish each package"*, *"remove @old-collaborator from @ncbijs/eutils"*.
+
+Foolproof `npm login` handoff. Bulk add across 43 packages happens with one `AskUserQuestion` gate; manual `npm owner add` × 43 was the previous workflow.
+
+### `/verify` Step 5: pkg-check (manifest completeness validation)
+
+`/verify` now has a 5th step that validates `package.json` + `LICENSE` + `README.md` completeness across the workspace.
+
+**Errors** (publish-critical): `name`, `version`, `license`, `exports` OR `main`, contradictory `private` + `publishConfig.access` combo.
+
+**Warnings**: `description`, `keywords`, `repository.url`, `homepage`, `bugs.url`, `engines.node`, `LICENSE` file, non-empty `README.md`.
+
+**Severity by context**: standalone `/verify` (mid-development) surfaces errors as warnings (don't halt the verify run). Release-path `/verify` (called from `/release` Phase A.2, `/prerelease` Phase A, `/hotfix` Phase A) escalates errors to halt with auto-fix offers before STOP.
+
+**Auto-fix scaffolds**: `repository.url` derivable from `git remote get-url origin`, MIT `LICENSE` scaffold with copyright derivation, minimal `README.md` stub. Each accepted auto-fix becomes a separate `chore(pkg): <fix>` commit.
+
+### Composition wiring
+
+Three new chains across existing skills:
+
+- **`/release` Phase G (NEW)** — fires only on major version bumps. `AskUserQuestion` gate offers to chain into `/solo-npm:deprecate` for the previous major (e.g., after 2.0.0 ships, deprecate 1.x with "v1.x is EOL — migrate to v2"). Default option is "Defer" — user-in-the-loop preserved.
+- **`/audit` Phase 5 gate extended** — adds "Deprecate affected versions" option. Useful when the upgrade path is blocked but consumers should be warned off vulnerable versions. Pre-fills `RANGE` from advisories' `vulnerable_versions` and `MESSAGE` from advisory metadata.
+- **`/prerelease` PROMOTE Phase E (NEW)** — optional `AskUserQuestion` after promote to chain into `/solo-npm:dist-tag cleanup-stale` and remove the now-superseded `@next`.
+
+`/status`'s stale-`@next` warning now includes an explicit `→ /solo-npm:dist-tag cleanup-stale` hint instead of just suggesting the manual `npm dist-tag rm` command.
+
+### README narrative reframe
+
+The README is reorganized around the **npm-operator-capability framing**:
+
+- **New opener**: *"AI skills for every npm operator capability a solo dev actually uses — plus the safety gates and infrastructure around them."* (Replaces "The full npm publishing lifecycle for AI-driven solo developers.")
+- **New "npm coverage" section** with a flat table mapping each npm capability to its skill (or non-goal). Honest about what's in and what isn't.
+- **New "Two kinds of skills" subsection** in Architecture distinguishing operator skills (orchestrate npm CLI) from safety + infrastructure skills (`/verify`, `/init`).
+- **New capability → skill diagram** (Mermaid, dark-red palette, mirrored to `resources/diagrams/capability-to-skill.mmd`).
+- **Lifecycle diagram updated** to add the three new skills in the OPERATE lane, with new edges for the auto-chains (`audit -.-> deprecate`, `status -.-> distTag`, `release -.post-major.-> deprecate`).
+- **"Out of scope (deliberate)" extended** with the codified non-goals from the analysis: `npm unpublish`, `npm token`, `npm hook`, `npm org`/`team`, `npm pack`/`search`/`star`/`fund`, `npm sbom`, `npm access` flip post-publish.
+
+The banner SVG's tagline is updated to match: *"AI skills for every npm operator capability solo devs use"*.
+
+### docs
+
+- `docs/npm-coverage.md` updated to reflect shipped status (Tier 1 + 2 items now ✓ shipped).
+- `docs/prompts.md` extended with prompt examples for the three new skills + four new compound workflows: major-version transition with auto-chain to /deprecate, CVE-with-blocked-upgrade → /deprecate, botched-release recovery via /dist-tag + /deprecate, bus-factor audit via /owner.
+
+### Migration
+
+No consumer-repo changes needed for v0.6.0. The new skills auto-detect their auth requirements and surface foolproof `npm login` instructions when needed. Existing /release, /verify, /audit invocations continue to work; the new chains and gates are additive.
+
+If you want to take advantage of the auto-chain offers (post-major deprecation, CVE deprecation, post-promote cleanup), no action is needed — they'll fire automatically the next time you hit those scenarios.
+
 ## v0.5.5 — Polish iteration: auto-chain consistency, multi-channel awareness, cherry-pick automation, README rework
 
 Closes UX gaps from v0.5.4 across five themes — auto-chain consistency for stale `release.yml`, dist-tag awareness in `/status`, maintenance-lines visibility, cherry-pick automation in `/hotfix`, and changelog aggregation on PROMOTE. Plus a comprehensive README rework with visual Mermaid diagrams.

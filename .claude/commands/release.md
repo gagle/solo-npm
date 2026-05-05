@@ -434,7 +434,28 @@ Released v${NEXT_VERSION} to npm.
   CI:      <gh run url>
 ```
 
-End the skill.
+Then proceed to Phase G if this was a major version bump; otherwise end the skill.
+
+## Phase G — Post-major deprecation chain (gated)
+
+Only fires when this release was a **major version bump** — detected by comparing `MAJOR(NEXT_VERSION)` to `MAJOR(LATEST_TAG_AT_PHASE_A)`. Patch and minor releases skip Phase G entirely (jump straight to skill end after C.8).
+
+After a successful major release (e.g., shipped `2.0.0` from a `1.x` line), the previous major is typically EOL. Surface an `AskUserQuestion` gate to deprecate it cleanly:
+
+```
+Header:   "Deprecate previous major"
+Question: "Deprecate the v<PREV_MAJOR>.x line now?"
+Options:
+  - Yes — chain to /solo-npm:deprecate with default message "v<PREV_MAJOR>.x is EOL — migrate to v<NEXT_MAJOR>.0+" (Recommended)
+  - Yes — let me customize the message — chain to /solo-npm:deprecate with prompt for the message
+  - No — defer (I'll handle later via /solo-npm:deprecate)
+```
+
+On either Yes: invoke `/solo-npm:deprecate` with `RANGE = <PREV_MAJOR>.x` and the chosen `MESSAGE`. The deprecate skill runs its own Phase A → D and returns. The user gets two confirmations (Phase G gate + deprecate's Phase B gate) but that's deliberate — deprecation is destructive on registry state.
+
+On `No — defer`: end the release skill with a footer hint:
+
+> Released v<NEXT_VERSION>. To deprecate the v<PREV_MAJOR>.x line later: `/solo-npm:deprecate "v<PREV_MAJOR>.x is EOL — migrate to v<NEXT_MAJOR>.0+"`
 
 ## Failure modes and recovery
 

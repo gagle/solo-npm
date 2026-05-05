@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="./resources/banner.svg" alt="solo-npm — AI-driven npm publishing for solo developers" width="640">
+  <img src="./resources/banner.svg" alt="solo-npm — AI skills for every npm operator capability solo devs use" width="640">
 </p>
 
-<p align="center"><b>The full npm publishing lifecycle for AI-driven solo developers.</b></p>
+<p align="center"><b>AI skills for every npm operator capability a solo dev actually uses — plus the safety gates and infrastructure around them.</b></p>
 
 <p align="center">
-Nine slash commands that take an empty repo to a tag-triggered OIDC release flow with provenance, then keep the portfolio healthy.
+Twelve slash commands wrapping <code>npm publish</code>, <code>version</code>, <code>dist-tag</code>, <code>deprecate</code>, <code>audit</code>, <code>outdated</code>, <code>view</code>, <code>owner</code>, <code>login + 2FA + OIDC</code> — with verify gates and provenance baked in.
 </p>
 
 ```mermaid
@@ -49,11 +49,17 @@ flowchart LR
         status["/solo-npm:status"]
         audit["/solo-npm:audit"]
         deps["/solo-npm:deps"]
+        distTag["/solo-npm:dist-tag"]
+        deprecate["/solo-npm:deprecate"]
+        owner["/solo-npm:owner"]
         audit --> deps
+        audit -.-> deprecate
+        status -.-> distTag
     end
     BS ==> PR
     PR <-.auto-chain.-> LT
     PR -.cache-aware.-> OP
+    PR -.post-major.-> deprecate
 ```
 
 ---
@@ -61,10 +67,11 @@ flowchart LR
 ## Table of contents
 
 - [Why solo-npm?](#why-solo-npm)
-- [The nine commands at a glance](#the-nine-commands-at-a-glance)
+- [The twelve commands at a glance](#the-twelve-commands-at-a-glance)
+- [npm coverage](#npm-coverage)
 - [Tell Claude](#tell-claude)
 - [Quick Start](#quick-start)
-- [The nine commands — detail](#the-nine-commands--detail)
+- [The twelve commands — detail](#the-twelve-commands--detail)
 - [Composition with `agent-skills`](#composition-with-agent-skills)
 - [Architecture](#architecture)
 - [Diagnostic prompts (symptom → skill)](#diagnostic-prompts-symptom--skill)
@@ -88,19 +95,52 @@ Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) rep
 
 ---
 
-## The nine commands at a glance
+## The twelve commands at a glance
 
 | Phase | Command | One-line purpose |
 |---|---|---|
 | **Bootstrap** | [`/solo-npm:init`](.claude/commands/init.md) | Scaffold release.yml + publishConfig + .nvmrc + wrappers + cache. Idempotent. |
 | **Bootstrap** | [`/solo-npm:trust`](.claude/commands/trust.md) | Configure OIDC Trusted Publishing per package via the `npm-trust` CLI. |
-| **Per release** | [`/solo-npm:release`](.claude/commands/release.md) | Universal release entry point. Auto-chains to `/prerelease` when version is pre-release-shape. |
-| **Per release** | [`/solo-npm:verify`](.claude/commands/verify.md) | Lint + typecheck + test + build. Halt on first failure. |
+| **Per release** | [`/solo-npm:release`](.claude/commands/release.md) | Universal release entry. Auto-chains to `/prerelease` on pre-release version; offers `/deprecate` after major. |
+| **Per release** | [`/solo-npm:verify`](.claude/commands/verify.md) | Lint + typecheck + test + build + pkg-check. Halt on first failure (severity by context). |
 | **Lifecycle transition** | [`/solo-npm:prerelease`](.claude/commands/prerelease.md) | Start/bump/promote pre-release lines (alpha/beta/rc → stable). Aggregated changelog on promote. |
 | **Lifecycle transition** | [`/solo-npm:hotfix`](.claude/commands/hotfix.md) | Patch a previous stable major. Cherry-pick automation for forward-port and backport. |
 | **Operate** | [`/solo-npm:status`](.claude/commands/status.md) | Portfolio dashboard. Multi-channel (`@latest`/`@next`) aware. Surfaces maintenance lines. |
-| **Operate** | [`/solo-npm:audit`](.claude/commands/audit.md) | Security audit with 4-tier risk classification. |
+| **Operate** | [`/solo-npm:audit`](.claude/commands/audit.md) | Security audit with 4-tier risk classification. Chains to `/deps` or `/deprecate`. |
 | **Operate** | [`/solo-npm:deps`](.claude/commands/deps.md) | Tier-batched dep upgrades with `/verify` gates. |
+| **Operate** | [`/solo-npm:dist-tag`](.claude/commands/dist-tag.md) | Manage `npm dist-tag` post-publish — cleanup stale `@next`, repoint `@latest`, channels (`@canary`). |
+| **Operate** | [`/solo-npm:deprecate`](.claude/commands/deprecate.md) | Mark versions deprecated (range-aware, mass + reversible). Safer than `npm unpublish`. |
+| **Operate** | [`/solo-npm:owner`](.claude/commands/owner.md) | Manage maintainers across packages — bus-factor mitigation, audits, transfer. |
+
+---
+
+## npm coverage
+
+solo-npm wraps the npm operator capabilities a solo-dev publisher actually uses. Honest about what's in and what isn't:
+
+| npm operator capability | Skill | Status |
+|---|---|---|
+| `npm publish` (with provenance + OIDC) | [`/solo-npm:release`](.claude/commands/release.md) | ✓ |
+| `npm version` (auto-bump from commits) | [`/solo-npm:release`](.claude/commands/release.md) | ✓ |
+| `npm dist-tag` at publish time | release.yml three-layer detection (auto, scaffolded by `/init`) | ✓ |
+| `npm dist-tag` post-publish | [`/solo-npm:dist-tag`](.claude/commands/dist-tag.md) | ✓ |
+| `npm deprecate` (mass + reversible) | [`/solo-npm:deprecate`](.claude/commands/deprecate.md) | ✓ |
+| `npm owner` add/rm/ls | [`/solo-npm:owner`](.claude/commands/owner.md) | ✓ |
+| `npm audit` (with risk classification) | [`/solo-npm:audit`](.claude/commands/audit.md) | ✓ |
+| `npm audit fix` (chained) | `/solo-npm:audit` → `/solo-npm:deps` | ✓ |
+| `npm outdated` + dep upgrades | [`/solo-npm:deps`](.claude/commands/deps.md) | ✓ |
+| `npm view` (portfolio dashboard) | [`/solo-npm:status`](.claude/commands/status.md) | ✓ |
+| `npm login` + 2FA + OIDC trust config | [`/solo-npm:trust`](.claude/commands/trust.md) | ✓ |
+| `package.json` completeness validation | [`/solo-npm:verify`](.claude/commands/verify.md) Step 5: pkg-check | ✓ |
+| `npm access` set post-publish | (manual `npm access set`) | non-goal — rare |
+| `npm unpublish` | (manual `npm unpublish`) | non-goal — 24h window, rarely safe |
+| `npm token` mgmt | (manual `npm token`) | non-goal — OIDC obviates for CI |
+| `npm hook`, `npm org`, `npm team` | (manual) | non-goal — not solo-dev |
+| `npm sbom` | (manual `npm sbom`) | defer — niche compliance |
+
+For the deeper analysis of how this maps to npm's full surface area (and the rationale behind the non-goals), see [`docs/npm-coverage.md`](./docs/npm-coverage.md).
+
+> **Heads-up on auth**: `dist-tag`, `deprecate`, and `owner` mutations require a local `npm login` session — OIDC Trusted Publishing only covers `npm publish`. The skills surface a foolproof `npm login` handoff if you're not authenticated locally.
 
 ---
 
@@ -169,7 +209,7 @@ Phase 1 scaffolds release.yml + package.json updates + .nvmrc + thin wrappers. P
 
 ---
 
-## The nine commands — detail
+## The twelve commands — detail
 
 Every command's `description` field is tuned so Claude routes natural-language prompts to the right skill. The "Triggers from" rows below are real prompts users (or agents) might type — they're matched against the skill descriptions.
 
@@ -212,14 +252,19 @@ Every command's `description` field is tuned so Claude routes natural-language p
   - STOP if cached `audit.tier1Count > 0`.
 - **Phase B — plan**: detect bump from conventional commits, render summary + changelog draft, ask ONE `AskUserQuestion` (Proceed / Abort).
 - **Phase C — execute**: bump version, commit, push, tag, watch CI, verify provenance attestation on registry.
+- **Phase G — post-major deprecation chain** (gated, fires only on major bumps): offer to chain into `/solo-npm:deprecate` for the previous major (e.g., after 2.0.0 ships, deprecate 1.x with "v1.x is EOL — migrate to v2").
 
-**Triggers from**: *"ship it"*, *"release this"*, *"cut a release"*, *"time to release v0.5.5"*, *"get this on npm"*.
+**Triggers from**: *"ship it"*, *"release this"*, *"cut a release"*, *"time to release v0.6.0"*, *"get this on npm"*.
 
-### `/solo-npm:verify` — quality gates
+### `/solo-npm:verify` — quality gates + manifest validation
 
-**Purpose**: lint + typecheck + test + build, halt on first failure. Composes with `/release` (Phase A.2 + C.4) and `/deps` (after each upgrade batch).
+**Purpose**: lint + typecheck + test + build + pkg-check, halt on first failure (severity by context). Composes with `/release` (Phase A.2 + C.4), `/prerelease` (Phase A), `/hotfix` (Phase A), and `/deps` (after each upgrade batch).
 
-**Triggers from**: *"verify"*, *"run the gates"*, *"did I break anything?"*, *"run all the tests"*.
+**Step 5 — pkg-check** validates `package.json` completeness across the workspace: `name`, `version`, `license`, `exports`/`main` are errors; `description`, `keywords`, `repository.url`, `homepage`, `bugs.url`, `engines.node`, `LICENSE` file, non-empty `README.md` are warnings. Auto-fix offers for derivable fields (e.g., `repository.url` from `git remote`; MIT LICENSE scaffold).
+
+Severity by context: standalone `/verify` surfaces errors as warnings (don't halt); release-path `/verify` halts on errors with auto-fix offers before STOP.
+
+**Triggers from**: *"verify"*, *"run the gates"*, *"did I break anything?"*, *"is my package.json publish-ready?"*.
 
 ### `/solo-npm:prerelease` — pre-release lifecycle
 
@@ -234,6 +279,7 @@ Every command's `description` field is tuned so Claude routes natural-language p
 - **Phase C**: changelog + version bump + commit + tag + CI + registry verify.
   - **PROMOTE-path changelog**: aggregates all changes since the last *stable* tag (covers all betas + promote commit) into one comprehensive entry. Per-beta entries preserved below for engineer-facing history.
 - **Phase D**: cache update.
+- **Phase E (PROMOTE only)**: optional `AskUserQuestion` gate to chain into `/solo-npm:dist-tag cleanup-stale` and remove the now-superseded `@next` dist-tag.
 
 **Triggers from**: *"start a beta for v2"*, *"cut a release candidate"*, *"promote the beta to stable"*, *"publish v2.0.0-beta.1"*, *"ship a beta of these breaking changes"*.
 
@@ -279,7 +325,7 @@ Every command's `description` field is tuned so Claude routes natural-language p
 2. Enrich each advisory with dep-tree depth + runtime/dev type + fix-availability.
 3. Classify into tiers (Fix today / Plan upgrade / Lower priority / Note).
 4. Render per-tier tables; pre-release awareness note when `@latest` and `@next` both affected.
-5. Gate via `AskUserQuestion` if Tier 1 or 2 has entries; chain to `/deps`.
+5. Gate via `AskUserQuestion` if Tier 1 or 2 has entries; chain to `/deps` (fix the deps), or `/deprecate` (mark vulnerable versions deprecated when upgrade is blocked).
 6. Write `.solo-npm/state.json#audit` for `/release` Phase A.5 to read.
 
 **Triggers from**: *"audit my packages"*, *"are there any CVEs?"*, *"what's vulnerable?"*, *"anything urgent in deps?"*.
@@ -297,6 +343,57 @@ Every command's `description` field is tuned so Claude routes natural-language p
 - Update `.solo-npm/state.json#audit.tier1Count` after CVE-fix batches.
 
 **Triggers from**: *"update my deps"*, *"refresh dependencies"*, *"upgrade typescript to v6"*, *"apply the CVE fixes from the audit"*.
+
+### `/solo-npm:dist-tag` — manage dist-tags post-publish
+
+**Purpose**: `npm dist-tag` orchestration after a version is already published — for cleanup, rollback, channels, portfolio audit.
+
+**Operations**: `add` (point a tag at a version), `rm` (remove a tag), `ls` (list across portfolio), `repoint` (= add overwrite), `cleanup-stale` (bulk-remove `@next` where it points at a superseded pre-release).
+
+**Steps it covers**:
+- **Phase 0**: extract operation, tag, version, scope from prompt.
+- **Phase A**: auth check (foolproof `npm login` handoff if needed); workspace discovery; per-package `dist-tags` fetch; safety rejections (cannot remove `@latest`; reject ambiguous targets).
+- **Phase B**: render the proposed mutation diff; ONE `AskUserQuestion` (Proceed / Abort).
+- **Phase C**: execute per package with 200ms inter-call backoff; halt on first failure with resume options.
+- **Phase D**: re-fetch dist-tags; verify; print summary.
+
+**Auth note**: `npm dist-tag` is NOT covered by OIDC Trusted Publishing (only `npm publish` is). Local `npm login` required.
+
+**Triggers from**: *"cleanup stale @next"*, *"repoint @latest to 1.5.2 — 1.6.0 has a bug"*, *"add @canary to 1.6.0-experimental.2"*, *"remove @next from @ncbijs/eutils"*, *"what dist-tags are set on my packages?"*.
+
+### `/solo-npm:deprecate` — retire versions cleanly
+
+**Purpose**: `npm deprecate` orchestration — mark a version, range, or full major-line deprecated with a custom message. Reversible. Safer than `npm unpublish`.
+
+**Operations**: `deprecate` (apply message), `undeprecate` (lift it).
+
+**Steps it covers**:
+- **Phase 0**: extract operation, version range (`1.x`, `<2.0.0`, specific version), message, scope.
+- **Phase A**: auth check; workspace discovery; per-package version enumeration via semver-satisfies; per-version current-deprecation read; safety rejections (no unbounded ranges like `*`; no empty messages on deprecate).
+- **Phase B**: render affected versions + message; ONE `AskUserQuestion` (Proceed / Abort).
+- **Phase C**: execute per version with backoff; halt on first failure with resume options.
+- **Phase D**: re-read deprecation state; verify; print summary.
+
+**Auth note**: same as `/dist-tag` — local `npm login` required.
+
+**Triggers from**: *"deprecate all 1.x with message 'v1.x is EOL — migrate to v2'"*, *"mark 1.6.0 as do-not-use because of data bug"*, *"deprecate <2.0.0 across all packages"*, *"undeprecate 1.5.0 of @ncbijs/eutils"*.
+
+### `/solo-npm:owner` — manage maintainers
+
+**Purpose**: bulk `npm owner` operations across the portfolio — bus-factor mitigation, ownership transfer, audits.
+
+**Operations**: `ls` (read-only), `add`, `rm`.
+
+**Steps it covers**:
+- **Phase 0**: extract operation, npm username, scope.
+- **Phase A**: auth check; per-package `npm owner ls`; safety rejections (cannot remove sole owner; warn on self-removal).
+- **Phase B**: render proposed mutations; ONE `AskUserQuestion` (Proceed / Abort). For `ls`: render directly with no gate.
+- **Phase C**: execute per package with backoff.
+- **Phase D**: re-list owners; verify; print bus-factor summary.
+
+**Auth note**: same as `/dist-tag` — local `npm login` required.
+
+**Triggers from**: *"add @backup-maintainer to all my packages"*, *"show me who can publish each package"*, *"remove @old-collaborator from @ncbijs/eutils"*, *"audit ownership across portfolio"*.
 
 ---
 
@@ -375,6 +472,84 @@ Both plugins work standalone. **Recommended setup**: install both.
 ---
 
 ## Architecture
+
+### Two kinds of skills
+
+solo-npm has **operator skills** that orchestrate npm CLI commands and registry features:
+
+- `/solo-npm:release` (publish + version)
+- `/solo-npm:audit` (audit + advisories)
+- `/solo-npm:deps` (outdated + install/update)
+- `/solo-npm:status` (view + dist-tags read)
+- `/solo-npm:trust` (login + 2FA + OIDC)
+- `/solo-npm:dist-tag` (dist-tag mutations)
+- `/solo-npm:deprecate` (deprecate + undeprecate)
+- `/solo-npm:owner` (owner mgmt)
+
+It also has **safety + infrastructure skills** that scaffold the release-flow plumbing and gate operator skills with quality checks:
+
+- `/solo-npm:init` (scaffold release.yml + publishConfig + wrappers + cache)
+- `/solo-npm:verify` (lint + typecheck + test + build + pkg-check)
+
+The lifecycle/transition skills span both — they orchestrate npm operations within a controlled branching workflow:
+
+- `/solo-npm:prerelease` (publish + version, with branching policy)
+- `/solo-npm:hotfix` (publish + version + dist-tag, with maintenance branching)
+
+This distinction matters when reasoning about composition: operator skills are the leaves of the workflow tree; safety + infrastructure skills are the trunks.
+
+### Capability → skill mapping
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'primaryColor':'#cb3837',
+  'primaryTextColor':'#ffffff',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
+  'background':'#111114',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
+  'tertiaryBkg':'#2c2a32',
+  'clusterBkg':'#18171c',
+  'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
+  'edgeLabelBackground':'#18171c',
+  'fontFamily':'ui-monospace, monospace'
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+flowchart LR
+    subgraph CAPS["npm operator capabilities"]
+        publish["publish"]
+        version["version"]
+        distTagCap["dist-tag"]
+        deprecateCap["deprecate"]
+        ownerCap["owner"]
+        auditCap["audit"]
+        outdatedCap["outdated"]
+        viewCap["view"]
+        loginCap["login + 2FA + OIDC"]
+    end
+    subgraph SKILLS["solo-npm skills"]
+        skRelease["/release"]
+        skDistTag["/dist-tag"]
+        skDeprecate["/deprecate"]
+        skOwner["/owner"]
+        skAudit["/audit"]
+        skDeps["/deps"]
+        skStatus["/status"]
+        skTrust["/trust"]
+    end
+    publish --> skRelease
+    version --> skRelease
+    distTagCap --> skDistTag
+    deprecateCap --> skDeprecate
+    ownerCap --> skOwner
+    auditCap --> skAudit
+    outdatedCap --> skDeps
+    viewCap --> skStatus
+    loginCap --> skTrust
+```
 
 ### Plugin baseline + thin wrapper pattern
 
@@ -583,7 +758,13 @@ The following are deliberate non-goals — labelling them prevents scope creep. 
 | Per-package pre-release identifiers in monorepos (one package on `beta` while others stay stable) | Different paradigm — independent versioning vs solo-npm's unified versioning. Touches every skill + cache architecture. | Restructuring the repo (move the diverging package out) is the right answer instead |
 | `/solo-npm:hotfix` accepting multiple majors in one invocation | Fix implementation often differs per major (different APIs across majors); sequential invocation prevents accidental "fix in wrong major" errors | Strong evidence sequential invocation is meaningful friction for some workflow |
 | Auto-resolve cherry-pick conflicts | Resolution depends on intent (e.g., which side of a refactor wins); auto-merging is more dangerous than asking | Never — this is a correctness boundary, not a UX gap |
-| `npm dist-tag rm` cleanup automation | Registry-side hygiene; outside solo-npm's scope. `/status` surfaces stale `@next` as informational warning. | Never — registry mutations require explicit user authorization |
+| `npm unpublish` | 24h hard window; breaks consumer lockfiles. `/deprecate` is the gentle alternative and covers the use case. | Never — deprecation is the correct pattern for retiring versions |
+| `npm token` mgmt | OIDC Trusted Publishing obviates publish tokens for CI. Local read-only tokens are dev-time, not release infrastructure. | Granular tokens become required for CI (unlikely for OIDC-first solo-dev) |
+| `npm hook` (registry webhooks) | Niche — solo-dev typically uses GitHub webhooks instead. | Some platform requires npm hooks specifically |
+| `npm org` / `npm team` | Not relevant for solo-dev (paid-tier multi-account workflows). | solo-npm explicitly expands beyond solo-dev |
+| `npm pack` / `search` / `star` / `fund` | Not release operations — out-of-band tools. | Never |
+| `npm sbom` | Niche compliance (SLSA/SBOM intersection). Provenance via OIDC already covers most needs. | Compliance regime explicitly requires SBOM artifacts |
+| `npm access` flip post-publish | Rare; manual `npm access set` is fine. | Frequent enough to warrant automation (unlikely) |
 
 ---
 

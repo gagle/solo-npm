@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" role="img" aria-label="solo-npm — AI-driven npm publishing for solo developers">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" role="img" aria-label="solo-npm — AI skills for every npm operator capability solo devs use">
   <title>solo-npm</title>
-  <desc>AI-driven npm publishing for solo developers</desc>
+  <desc>AI skills for every npm operator capability solo devs use</desc>
 
   <!-- Background -->
   <rect width="800" height="200" fill="#111114"/>
@@ -55,6 +55,6 @@
         font-size="14" font-weight="400"
         fill="#a8a4fd"
         opacity="0.75"
-        text-anchor="middle">AI-driven npm publishing for solo developers</text>
+        text-anchor="middle">AI skills for every npm operator capability solo devs use</text>
 
 </svg>

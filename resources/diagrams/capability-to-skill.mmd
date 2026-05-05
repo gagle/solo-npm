@@ -1,0 +1,48 @@
+%%{init: {'theme':'base','themeVariables':{
+  'primaryColor':'#cb3837',
+  'primaryTextColor':'#ffffff',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
+  'background':'#111114',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
+  'tertiaryBkg':'#2c2a32',
+  'clusterBkg':'#18171c',
+  'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
+  'edgeLabelBackground':'#18171c',
+  'fontFamily':'ui-monospace, monospace'
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+flowchart LR
+    subgraph CAPS["npm operator capabilities"]
+        publish["publish"]
+        version["version"]
+        distTagCap["dist-tag"]
+        deprecateCap["deprecate"]
+        ownerCap["owner"]
+        auditCap["audit"]
+        outdatedCap["outdated"]
+        viewCap["view"]
+        loginCap["login + 2FA + OIDC"]
+    end
+    subgraph SKILLS["solo-npm skills"]
+        skRelease["/release"]
+        skDistTag["/dist-tag"]
+        skDeprecate["/deprecate"]
+        skOwner["/owner"]
+        skAudit["/audit"]
+        skDeps["/deps"]
+        skStatus["/status"]
+        skTrust["/trust"]
+    end
+    publish --> skRelease
+    version --> skRelease
+    distTagCap --> skDistTag
+    deprecateCap --> skDeprecate
+    ownerCap --> skOwner
+    auditCap --> skAudit
+    outdatedCap --> skDeps
+    viewCap --> skStatus
+    loginCap --> skTrust
