@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" style="background:transparent" role="img" aria-label="solo-npm — AI skills for every npm operator capability solo devs use">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" style="background:transparent" role="img" aria-label="solo-npm — AI skills for every npm command a solo dev runs">
   <title>solo-npm</title>
-  <desc>AI skills for every npm operator capability solo devs use</desc>
+  <desc>AI skills for every npm command a solo dev runs</desc>
 
   <!-- No background rect — banner is transparent and inherits the page background. -->
 
@@ -18,7 +18,7 @@
 
   <!-- Subtle decorative corner sparkles -->
   <g class="corner-spark">
-    <path d="M 100,40 l 1.5,-7 l 1.5,7 l 7,1.5 l -7,1.5 l -1.5,7 l -1.5,-7 l -7,-1.5 l 7,-1.5 z"/>
+    <path d="M 100,70 l 1.5,-7 l 1.5,7 l 7,1.5 l -7,1.5 l -1.5,7 l -1.5,-7 l -7,-1.5 l 7,-1.5 z"/>
     <path d="M 700,160 l 1.5,-7 l 1.5,7 l 7,1.5 l -7,1.5 l -1.5,7 l -1.5,-7 l -7,-1.5 l 7,-1.5 z"/>
     <path d="M 130,150 l 1,-5 l 1,5 l 5,1 l -5,1 l -1,5 l -1,-5 l -5,-1 l 5,-1 z"/>
     <path d="M 670,55 l 1,-5 l 1,5 l 5,1 l -5,1 l -1,5 l -1,-5 l -5,-1 l 5,-1 z"/>
@@ -62,6 +62,6 @@
         font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace"
         font-size="14" font-weight="400"
         opacity="0.85"
-        text-anchor="middle">AI skills for every npm operator capability solo devs use</text>
+        text-anchor="middle">AI skills for every npm command a solo dev runs</text>
 
 </svg>

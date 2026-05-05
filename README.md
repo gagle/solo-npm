@@ -1,12 +1,8 @@
 <p align="center">
-  <img src="./resources/banner.svg" alt="solo-npm — AI skills for every npm operator capability solo devs use" width="640">
+  <img src="./resources/banner.svg" alt="solo-npm — AI skills for every npm command a solo dev runs" width="640">
 </p>
 
-<p align="center"><b>AI skills for every npm operator capability a solo dev actually uses — plus the safety gates and infrastructure around them.</b></p>
-
-<p align="center">
-Twelve slash commands wrapping <code>npm publish</code>, <code>version</code>, <code>dist-tag</code>, <code>deprecate</code>, <code>audit</code>, <code>outdated</code>, <code>view</code>, <code>owner</code>, <code>login + 2FA + OIDC</code> — with verify gates and provenance baked in.
-</p>
+<p align="center"><b>AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, deps, owner, trust — with verify gates and provenance baked in.</b></p>
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
@@ -115,9 +111,9 @@ Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) rep
 
 ## npm coverage
 
-solo-npm wraps the npm operator capabilities a solo-dev publisher actually uses. Honest about what's in and what isn't:
+solo-npm wraps the npm commands a solo-dev publisher actually runs. Honest about what's in and what isn't:
 
-| npm operator capability | Skill | Status |
+| npm command | Skill | Status |
 |---|---|---|
 | `npm publish` (with provenance + OIDC) | [`/solo-npm:release`](.claude/commands/release.md) | ✓ |
 | `npm version` (auto-bump from commits) | [`/solo-npm:release`](.claude/commands/release.md) | ✓ |
@@ -518,7 +514,7 @@ This distinction matters when reasoning about composition: operator skills are t
   'fontFamily':'ui-monospace, monospace'
 },'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
 flowchart LR
-    subgraph CAPS["npm operator capabilities"]
+    subgraph CAPS["npm commands"]
         publish["publish"]
         version["version"]
         distTagCap["dist-tag"]

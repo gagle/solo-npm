@@ -1,7 +1,7 @@
 {
   "name": "solo-npm",
   "version": "0.6.0",
-  "description": "Twelve AI skills wrapping every npm operator capability solo devs use — publish, version, dist-tag, deprecate, audit, outdated, view, owner, login + 2FA + OIDC — plus the safety gates and infrastructure around them. OIDC + provenance for publish; foolproof npm login handoff for registry mutations.",
+  "description": "Twelve AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, outdated, view, owner, login + 2FA + OIDC — with verify gates and provenance baked in. OIDC + provenance for publish; foolproof npm login handoff for registry mutations.",
   "license": "MIT",
   "author": "Gabriel Llamas",
   "repository": {
