@@ -23,7 +23,7 @@ Nine slash commands that take an empty repo to a tag-triggered OIDC release flow
   'titleColor':'#a8a4fd',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-}}}%%
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
 flowchart LR
     subgraph BS["BOOTSTRAP — one-time"]
         direction TB
@@ -318,7 +318,7 @@ solo-npm is the **release operator**. It deliberately does NOT cover development
   'clusterBorder':'#56555b',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-}}}%%
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
 flowchart LR
     subgraph AS["addyosmani/agent-skills — DEVELOPMENT"]
         spec["spec / plan"]
@@ -391,7 +391,7 @@ Both plugins work standalone. **Recommended setup**: install both.
   'clusterBorder':'#56555b',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-}}}%%
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
 flowchart TD
     user["User types /release"]
     wrapper["Consumer wrapper<br/>.claude/skills/release/SKILL.md<br/>(repo-specific narrative)"]
@@ -428,7 +428,7 @@ The wrapper is just a thin file with repo context (workspace shape, verify comma
   'clusterBorder':'#56555b',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
-}}}%%
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
 flowchart TD
     start(["User: /release"]) --> phaseA["Phase A — pre-flight<br/>verify · trust cache · audit cache"]
     phaseA -->|missing trust| toTrust["auto-chain → /solo-npm:trust"]
