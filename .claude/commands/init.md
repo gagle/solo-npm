@@ -424,15 +424,32 @@ If user opted in via `Customize` AND no `CONTRIBUTING.md` exists,
 write the AI-only solo-dev template (see plugin docs for the canonical
 shape).
 
-### 1d. Commit + push (gated)
+### 1d. Pkg-check validation (NEW)
 
-After scaffolds are written, surface a diff summary and call
-`AskUserQuestion`:
+After scaffolds are written but BEFORE committing them, validate the package manifest end-to-end so /init never claims "complete" while leaving the manifest non-publish-ready.
+
+Invoke `/solo-npm:verify --pkg-check-only`. This runs Step 5's three tiers (publint + manual checks + tarball-content audit) without re-running lint/typecheck/test/build (those are dev-time, not publish-time concerns).
+
+Auto-fix loop:
+
+1. If pkg-check returns `PKG_CHECK_OK` → continue to 1e.
+2. If `PKG_CHECK_FAIL` (errors found) with auto-fix offers → AskUserQuestion → apply selected fixes → re-run pkg-check.
+3. If errors persist after auto-fixes (or auto-fixes weren't applicable) → STOP with: *"Init scaffolded the workflow files but `package.json` has unresolvable issues. Fix manually then re-run `/solo-npm:init` (idempotent — won't re-scaffold)."*
+4. If `PKG_CHECK_WARN` (warnings only) → log warnings; continue to 1e.
+5. **If secrets detected in Tier 3** → HARD STOP with the verbatim secrets-detection block. Do NOT proceed to commit.
+
+This validation closes the original gap from `docs/npm-coverage.md`: *"/init scaffolds publishConfig but doesn't validate everything"*.
+
+### 1e. Commit + push (gated)
+
+After scaffolds are written and pkg-check is clean (or warnings-only), surface a diff summary and call `AskUserQuestion`:
 
 - header: `"Commit scaffolds"`
 - options: `Commit + push (Recommended)` / `Commit only` / `Stage only` / `Skip`
 
 Default commit message: `chore: bootstrap solo-npm release workflow`.
+
+If pkg-check made any auto-fix commits during 1d, the diff summary surfaces them as separate commits already (so the user sees `chore(pkg): set repository.url from git remote` etc. alongside the scaffolding commit).
 
 ## Phase 2 — First-publish gate
 

@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.6.1 — pkg-check enhancement: publint + tarball-content audit + .gitignore-vs-files divergence
+
+Closes the "MED priority partial" pre-publish manifest validation gap from `docs/npm-coverage.md`. The v0.6.0 `/verify` Step 5 spec was prescriptive prose that Claude read and applied manually — slow, inconsistent, didn't cover everything. v0.6.1 replaces the manual checklist with a 3-tier check backed by industry-standard tooling.
+
+### Step 5 — pkg-check rewritten as 3 tiers
+
+**Tier 1 — `publint`** (canonical manifest validator). Runs via `pnpm dlx publint@0.3 --strict --json` (npm/yarn fallbacks). Catches malformed `exports`, missing `types` for TS, deprecated fields, `MAIN_FIELD_NOT_FOUND`, `EXPORTS_GLOB_NO_PATTERN_MATCH`, and ~30 other rules. Severity maps to solo-npm (`error` halts release-path; `warning` surfaced).
+
+**Tier 2 — manual checks** (publint blind spots). Four checks:
+
+1. LICENSE file presence in package dir — auto-fix offers MIT scaffold.
+2. README.md exists, non-trivial — auto-fix offers stub from `name` + `description`.
+3. `engines.node` ↔ `.nvmrc` consistency.
+4. **NEW: `.gitignore` vs `files`/`exports` divergence**. Catches the canonical "I shipped an empty tarball because `dist/` is gitignored AND not in `files` allowlist" gotcha. Parses `.gitignore` (best-effort: simple patterns; v1 skips negation rules). Walks publish-critical paths from `package.json` (`main`, `module`, `types`, `exports.*`, `bin.*`); flags errors when matched + not-allowlisted. Auto-fix offers `files: [<gitignored-but-needed paths>, "package.json", "README.md", "LICENSE"]`.
+
+**Tier 3 — `npm pack --dry-run` tarball-content audit (NEW)**. The actual tarball gets inspected for:
+
+- **Secrets** (`.env`, `*.key`, `*.pem`, `id_rsa*`, `*credentials*`, `secrets*.json`) → **HARD STOP** with verbatim remediation steps (`git rm --cached`, `.gitignore`/`.npmignore`, **rotate any leaked credentials**). NO auto-fix — too dangerous to attempt.
+- Lockfiles, test files, editor configs, OS junk → warnings + auto-fix offer for `files` allowlist.
+- Missing `LICENSE`/`README.md` from the actual tarball → warnings.
+- `unpackedSize > 5 MB` → warning + top-10-largest-files breakdown.
+
+Pattern excludes for false positives: `.env.example`, `.env.sample`, `.env.template` allowed (they're intentional documentation).
+
+### `/init` Phase 1d — pre-flight manifest validation (NEW)
+
+After Phase 1c scaffolding but BEFORE the existing commit gate (renamed to 1e), `/init` invokes `/verify --pkg-check-only`. Auto-fix loop applies fixes; unresolvable errors STOP. This closes the original gap from `docs/npm-coverage.md`: *"/init scaffolds publishConfig but doesn't validate everything"* — now `/init` never claims "complete" while leaving the manifest non-publish-ready.
+
+### `/verify --pkg-check-only` mode (NEW)
+
+Skips lint/typecheck/test/build; runs only Step 5. Used by `/init` Phase 1d and by users wanting fast publish-readiness check without the full suite.
+
+### Hash-based caching
+
+`pkgCheck` cache section in `.solo-npm/state.json` keyed by `{ packageJsonHash, gitignoreHash, distOutputContents }`. Hash invalidation; no TTL. Repeat `/verify` runs hit cache → `PKG_CHECK_OK_CACHED` (near-zero wall-time).
+
+### `docs/npm-coverage.md` comprehensive refresh
+
+Resolved the staleness audit: §2 inventory (9 → 12 skills + new `/dist-tag`/`/deprecate`/`/owner` rows), §3 line 152 ("✗ partial — MED" → ✓ shipped), §4.1–§4.5 past-tensed with shipped callouts, §6.1 README opener history (3 iterations), §6.2 table updated with current statuses, §6.3 capability→skill diagram noted as added-then-removed, §6.4 cosmetic fixes, §8 migration marked complete with historical sequence preserved, NEW §10 explaining the "operator capability" → "npm command" terminology shift in user-facing copy.
+
+The internal contradiction is resolved (TL;DR no longer disagrees with the matrix).
+
+### Migration
+
+No consumer-repo changes. publint and `npm pack --dry-run --json` are invoked ad-hoc from the consumer's package manager (no new runtime dep on solo-npm itself). Existing consumer wrappers (`.claude/skills/release/SKILL.md`, `.claude/skills/verify/SKILL.md`) continue to work — they invoke `/solo-npm:verify` which now runs the enhanced Step 5 transparently.
+
+If a consumer's `.gitignore` excludes their build output AND they don't have a `files` field, the first `/verify` run after upgrading will surface the divergence as an error with auto-fix offer. Single approval restores correctness.
+
 ## v0.6.0 — npm operator coverage: three new skills + /verify pkg-check + framing alignment
 
 Major scope expansion driven by the npm operator-capabilities analysis (`docs/npm-coverage.md`). Three new skills close the four real gaps identified there; `/verify` gains a manifest-completeness step; the README narrative is reframed around the npm-operator-capability framing.

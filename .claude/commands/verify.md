@@ -1,5 +1,5 @@
 ---
-description: Run quality gates — lint + typecheck + test + build + pkg-check with auto-detected commands. Triggers from prompts like "verify", "run the gates", "did I break anything", "did tests pass", "make sure everything passes", "quick sanity check before commit", "is my package.json publish-ready". Halts on first failure. Wrap via .claude/skills/verify/SKILL.md for repo-specific commands (e2e, coverage, nx run-many).
+description: Run quality gates — lint + typecheck + test + build + pkg-check (publint + tarball audit + manual checks). Triggers from prompts like "verify", "run the gates", "did I break anything", "did tests pass", "is my package.json publish-ready", "will my tarball ship correctly", "are there any secrets in my package", "check my exports map". Halts on first failure. Wrap via .claude/skills/verify/SKILL.md for repo-specific commands. Supports `--pkg-check-only` mode to skip lint/test/build and run only Step 5.
 ---
 
 # Verify
@@ -30,79 +30,207 @@ those instead.
 
 ## Default sequence
 
-Run the detected commands in this order, sequentially, halting on the
-first non-zero exit (per the severity rules in §pkg-check):
+Run in order, halting on the first non-zero exit (per the severity rules in §pkg-check):
 
 1. Lint
 2. Typecheck (if separate from lint)
 3. Test
 4. Build
-5. **Pkg-check** — `package.json` completeness validation (see below)
+5. **Pkg-check** — `package.json` completeness + tarball-content audit (see below)
+
+### `--pkg-check-only` mode
+
+Run only Step 5. Skips lint/typecheck/test/build. Used by `/solo-npm:init` Phase 1d to validate scaffolds without re-running the full suite, and by users who want a fast publish-readiness check.
 
 ## Step 5 — pkg-check
 
-Validate that each `package.json` in the workspace is publish-ready. For monorepos, validate every package's manifest individually.
+Three tiers:
 
-### Fields validated
+| Tier | Tool | Purpose |
+|---|---|---|
+| **Tier 1** | `publint` | Industry-standard manifest validator. Catches malformed `exports`, missing `types` for TS, deprecated fields, etc. |
+| **Tier 2** | manual checks | publint blind spots: LICENSE file presence, README non-empty, `engines.node` ↔ `.nvmrc` consistency, **`.gitignore` vs `files`/`exports` divergence**. |
+| **Tier 3** | `npm pack --dry-run` | Tarball-content audit: secrets, lockfiles, test files, oversize, missing LICENSE/README in the actual tarball. |
 
-| Field / file | Severity | Auto-fix offer | Reasoning |
-|---|---|---|---|
-| `name` | error | — | Required by npm |
-| `version` | error | — | Required |
-| `license` | error | offer MIT scaffold | Publish-critical (consumers need to know) |
-| `exports` OR `main` | error | — | Consumers can't import without one |
-| `private: true` AND `publishConfig.access: "public"` | error | — | Contradictory — pick one |
-| `description` | warning | — | Shown in npm search results |
-| `keywords` | warning | — | Discoverability |
-| `repository.url` | warning | derive from `git remote get-url origin` | Provenance + GitHub linking |
-| `homepage` | warning | derive from repository URL | Landing page |
-| `bugs.url` | warning | derive from repository URL + `/issues` | Issue tracker |
-| `files` (or `.npmignore`) | warning | — | Controls what gets in the tarball |
-| `engines.node` | warning | offer `>=24` (matches `/init` default) | Compatibility hint |
-| `LICENSE` file in package dir | warning | offer MIT scaffold | Many tools/CI check the file |
-| `README.md` exists, non-empty | warning | offer stub generator | Registry shows it; users expect it |
+For monorepos, run all three tiers per workspace package, in parallel.
 
-### Severity by context
+### Tier 1 — publint (canonical manifest validator)
 
-`pkg-check` behaves differently depending on **who invoked verify**:
+Run via the detected package manager:
 
-| Invocation context | Errors | Warnings | Auto-fix offers |
-|---|---|---|---|
-| `/verify` standalone (mid-development) | Surface; **continue** verify (don't halt) | Surface | Yes — one batched `AskUserQuestion` per fixable item |
-| `/solo-npm:release` Phase A.2 (pre-flight) | **Halt the release**; offer auto-fixes before STOP | Surface; allow proceed | Yes — fix-and-retry loop before STOP |
-| `/solo-npm:release` Phase C.4 (post-bump) | (Errors should already be caught in A.2; if any reach here, halt) | Surface only; no fix offers | No |
-| `/solo-npm:deps` after-batch | **Skipped** (deps don't touch manifest) | — | — |
-| `/solo-npm:prerelease` Phase A | Halt; offer auto-fixes | Surface | Yes |
-| `/solo-npm:hotfix` Phase A | Halt; offer auto-fixes | Surface | Yes |
-
-The skill detects its caller via the invoking context. Standalone is the lenient mode; release-path is the strict mode.
-
-### Auto-fix scaffolds
-
-When a fix offer is accepted via `AskUserQuestion`:
-
-| Fix | Action |
-|---|---|
-| `repository.url` | Run `git remote get-url origin`; normalize to `git+https://github.com/<owner>/<repo>.git`; write to `package.json#repository.url` (and `repository.type = "git"`). |
-| `homepage` | Derive `https://github.com/<owner>/<repo>#readme`. |
-| `bugs.url` | Derive `https://github.com/<owner>/<repo>/issues`. |
-| `engines.node` | Set `>=24` (matches `/solo-npm:init` default). |
-| `LICENSE` file | Generate MIT license text with `{year} {authorName}` from `package.json#author` (fall back to `git config user.name`). Write to `<package-dir>/LICENSE`. |
-| `README.md` stub | Minimal: `# <pkg-name>\n\n<description from package.json>\n\n## Installation\n\n\`\`\`bash\nnpm install <pkg-name>\n\`\`\`\n` (or pnpm/yarn). |
-
-Each accepted auto-fix produces a separate commit:
-
-```
-chore(pkg): set <field> from <source>
-chore(pkg): scaffold MIT LICENSE
-chore(pkg): scaffold README.md stub
+```bash
+# pnpm:
+pnpm dlx publint@0.3 --strict --json
+# npm:
+npx publint@0.3 --strict --json
+# yarn:
+yarn dlx publint@0.3 --strict --json
 ```
 
-The pkg-check step does NOT batch all auto-fixes into a single mega-commit; separate commits give clean `git log` history.
+Pin `@0.3` (or whichever current major) so output schema is stable. Bump explicitly when needed.
+
+Parse JSON output → array of `{ message, type, name, code, args }`. Map severity:
+
+- publint `error` → solo-npm error (halts release-path)
+- publint `warning` → solo-npm warning
+- publint `suggestion` → solo-npm warning (low priority — info-only is fine)
+
+Surface each finding as: *"publint [`<code>`]: `<message>`"*.
+
+publint covers (non-exhaustive): `EXPORTS_GLOB_NO_PATTERN_MATCH`, `EXPORTS_TYPES_INVALID_FORMAT`, `IMPLICIT_INDEX_D_TS`, `MISSING_TYPES`, `MAIN_FIELD_NOT_FOUND`, `EXPORTS_VALUE_INVALID`, `USE_EXPORTS_BROWSER`, `USE_TYPE_CONDITION`, deprecated `directories.bin`, deprecated `bundleDependencies`, etc.
+
+### Tier 2 — manual checks
+
+#### 2a. LICENSE file in package dir
+
+Check `<package-dir>/LICENSE` (or `LICENSE.md`, `LICENSE.txt`). Even if `package.json#license` field is set, the file should ship.
+
+- Severity: warning
+- Auto-fix: offer MIT scaffold with `{year} {author}` from `package.json#author` (fallback to `git config user.name`).
+
+#### 2b. README.md exists and non-empty
+
+Check `<package-dir>/README.md` exists and is non-trivial (>50 bytes, has at least one heading).
+
+- Severity: warning
+- Auto-fix: offer minimal stub from `package.json#name` + `description`.
+
+#### 2c. `engines.node` ↔ `.nvmrc` consistency
+
+If both `package.json#engines.node` and `.nvmrc` are set, they shouldn't contradict. Examples:
+
+- `engines.node: ">=24"` and `.nvmrc: 24` → consistent
+- `engines.node: ">=20"` and `.nvmrc: 24` → consistent (24 satisfies >=20)
+- `engines.node: ">=22 <24"` and `.nvmrc: 24` → **contradiction** (24 doesn't satisfy upper bound)
+
+- Severity: warning
+- No auto-fix (intent is ambiguous; user must resolve).
+
+#### 2d. `.gitignore` vs `files`/`exports` divergence (NEW)
+
+The canonical "I shipped an empty tarball" gotcha: build output is gitignored AND not in the `files` allowlist → tarball is empty.
+
+Algorithm:
+
+1. Parse `.gitignore` (best-effort). v1 supports: bare paths (`dist`, `lib/`), wildcards (`*.log`), comments (`#`), trailing-slash dir matches. **Skips negation rules (`!`)** — treats them as warnings the user must review manually. Document this in the surface output.
+2. Collect publish-critical paths from `package.json`:
+   - `main`, `module`, `types`, `typings`
+   - All paths under `exports.*` (recurse into nested condition objects)
+   - All paths under `bin.*`
+3. For each publish-critical path:
+   - Check if any `.gitignore` pattern matches it (path-based glob match).
+   - If matched: check `package.json#files` array.
+     - No `files` field OR no entry covers the matched path → **error** with: *"`<field>` points at `<path>` which is gitignored. The published tarball will be missing it. Add `files: ["<path>", ...]` to package.json or stop gitignoring it."*
+
+Auto-fix: offer to add `files: [<gitignored-but-needed paths>, "package.json", "README.md", "LICENSE"]`. User accepts → write to package.json → re-run Tier 2 (and Tier 3) to confirm.
+
+### Tier 3 — `npm pack --dry-run` tarball-content audit (NEW)
+
+Run via the detected package manager:
+
+```bash
+# pnpm:
+pnpm pack --dry-run --json
+# npm:
+npm pack --dry-run --json
+# yarn (yarn 1.x doesn't support --json on pack; fall back to text parse):
+yarn pack --dry-run
+```
+
+Output (npm/pnpm format):
+
+```json
+[{
+  "id": "pkg@1.0.0",
+  "name": "pkg",
+  "version": "1.0.0",
+  "size": 12345,
+  "unpackedSize": 23456,
+  "files": [
+    { "path": "package.json", "size": 567 },
+    { "path": "dist/index.js", "size": 12345 }
+  ],
+  "entryCount": 2
+}]
+```
+
+Apply pattern audits to the file list:
+
+| Pattern | Severity | Reason | Auto-fix |
+|---|---|---|---|
+| `.env`, `.env.*` (excludes `.env.example`/`.env.sample`/`.env.template`) | **error** | Secrets — never publish | NO auto-fix; STOP loudly |
+| `*.key`, `*.pem`, `id_rsa*`, `*credentials*`, `secrets*.json` | **error** | Likely-secret patterns | NO auto-fix; STOP loudly |
+| `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` | warning | Lockfiles shouldn't ship — clutter, can confuse consumers | Suggest `files` allowlist |
+| `**/*.test.*`, `**/*.spec.*`, `__tests__/**`, `tests/**`, `test/**` | warning | Test files inflate tarball | Suggest `files` allowlist |
+| `tsconfig*.json` | info | Sometimes intentional for type ergonomics | None |
+| `.git*`, `.DS_Store`, `Thumbs.db`, `node_modules/**` | warning | Should never ship | Suggest `.npmignore` entries |
+| `.vscode/**`, `.idea/**` | warning | Editor configs | Suggest `files` allowlist |
+| (no `LICENSE` in tarball) | warning | Should ship even if `license` field is set | Offer MIT scaffold (covered by Tier 2a) |
+| (no `README.md` in tarball) | warning | npm registry shows the README | Offer stub (covered by Tier 2b) |
+
+Size audits:
+
+- `unpackedSize > 5 MB` → warning. Surface top-10-largest-files breakdown so user can investigate.
+- `entryCount > 200` → info (suggests potential over-inclusion).
+
+#### Secrets-detection: hard STOP
+
+When ANY of the secrets-pattern matches, halt with this verbatim message in **all** invocation contexts (including `/verify` standalone — secrets leakage is too dangerous to defer to a later pass):
+
+```
+❌ SECRETS DETECTED IN TARBALL
+
+The following files would be published if you released right now:
+  <file-1> (<size> bytes)
+  <file-2> (<size> bytes)
+
+Fix BEFORE releasing:
+  1. git rm --cached <file>
+  2. echo "<file>" >> .gitignore
+  3. echo "<file>" >> .npmignore   (or add a `files` allowlist to package.json)
+  4. ROTATE any credentials that were in this file (assume them leaked).
+  5. Re-run /solo-npm:verify --pkg-check-only.
+
+This is a HARD STOP. /release will not proceed.
+```
+
+Auto-fix is NOT offered for secrets — the user must do `git rm --cached` themselves and rotate the credentials manually. Auto-removing the file from the tarball without git+rotation steps would leave secrets in `git log` history, which is worse than a published tarball.
+
+#### Auto-fix offer: suggest `files` allowlist
+
+When test files, lockfiles, or editor configs are detected AND there's no `files` field in `package.json`:
+
+```
+Header:   "Tarball cleanup"
+Question: "Add a `files` allowlist to limit what ships?"
+Options:
+  - Yes — set files: ["dist", "package.json", "README.md", "LICENSE"] (Recommended)
+  - Customize — specify entries
+  - Skip — surface as warnings only
+```
+
+On Yes: write to `package.json#files` → commit `chore(pkg): add files allowlist for clean tarball` → re-run Tier 3 to confirm.
+
+## Combined auto-fix offers
+
+| Trigger | Tier | Action |
+|---|---|---|
+| Missing `repository.url` | 1 (publint warning) | Derive from `git remote get-url origin` |
+| Missing `homepage` | 1 | `repository.url + "#readme"` |
+| Missing `bugs.url` | 1 | `repository.url + "/issues"` |
+| Missing `engines.node` | 1 | Set `>=24` (matches `/init` default) |
+| Missing `LICENSE` file | 2a | MIT scaffold with `{year} {author}` |
+| Empty/missing `README.md` | 2b | Stub from `name` + `description` |
+| publint reports `IMPLICIT_INDEX_D_TS` (TS pkg missing types) | 1 | Probe `./dist/index.d.ts`, `./types/index.d.ts`, `./build/index.d.ts`; offer if exactly one matches |
+| `.gitignore` vs missing `files` divergence | 2d | `files: [<gitignored-but-needed paths>, "package.json", "README.md", "LICENSE"]` |
+| Test/lockfile/editor in tarball + no `files` field | 3 | `files: ["dist", "package.json", "README.md", "LICENSE"]` (sensible default) |
+| Secrets in tarball | 3 | NO auto-fix — STOP loudly |
+
+Each accepted auto-fix produces a separate `chore(pkg): <fix>` commit (no mega-commits, clean `git log`).
 
 ### `AskUserQuestion` shape
 
-When fixes are available, surface a single batched question:
+When multiple fixes are available, surface a single batched question:
 
 ```
 Header:   "Pkg-check fixes"
@@ -114,14 +242,36 @@ Options:
   - Abort
 ```
 
-If the user picks "Apply selected", show a multiSelect AskUserQuestion listing each fix as a checkbox.
+If the user picks "Apply selected", show a multiSelect `AskUserQuestion` listing each fix.
+
+### Severity by context
+
+| Invocation context | Errors | Warnings | Auto-fix offers |
+|---|---|---|---|
+| `/verify` standalone (mid-development) | Surface; **continue** verify (don't halt) | Surface | Yes — batched |
+| `/solo-npm:verify --pkg-check-only` (e.g., from `/init` Phase 1d) | Halt; offer auto-fixes | Surface | Yes |
+| `/solo-npm:release` Phase A.2 (pre-flight) | **Halt the release**; offer auto-fixes before STOP | Surface; allow proceed | Yes — fix-and-retry |
+| `/solo-npm:release` Phase C.4 (post-bump) | Halt (shouldn't reach here) | Surface only | No |
+| `/solo-npm:prerelease` Phase A | Halt; offer auto-fixes | Surface | Yes |
+| `/solo-npm:hotfix` Phase A | Halt; offer auto-fixes | Surface | Yes |
+| `/solo-npm:deps` after-batch | **Skipped** (deps don't touch manifest/tarball) | — | — |
+
+**Special: secrets-detection error in Tier 3 halts ALL contexts**, including `/verify` standalone. Too dangerous to defer.
+
+### Caching
+
+- Hash inputs: `{ packageJsonHash, gitignoreHash, distOutputContents, otherRelevantFiles }`.
+- Cache `{ publint, manual, pack }` results in `.solo-npm/state.json#pkgCheck` keyed by hash.
+- Hash invalidation handles freshness; no TTL needed.
+- Cache survives `/release` runs so back-to-back invocations skip recomputation.
 
 ### Output
 
-- **All checks pass**: print `PKG_CHECK_OK` on its own line.
-- **Warnings only**: print each warning + `PKG_CHECK_WARN: <count> warnings`.
-- **Errors found** (release-path): print each error + `PKG_CHECK_FAIL: <count> errors, <count> warnings`. Halt the caller.
-- **Errors found + auto-fix accepted**: apply fixes; re-run pkg-check; if clean, print `PKG_CHECK_OK_AFTER_FIXES` and continue.
+- **All clean**: `PKG_CHECK_OK` (or `PKG_CHECK_OK_CACHED` if cache hit).
+- **Warnings only**: per-warning lines + `PKG_CHECK_WARN: <N> warnings`.
+- **Errors found** (release-path): per-error lines + `PKG_CHECK_FAIL: <E> errors, <W> warnings`. Halt the caller.
+- **Errors + auto-fix accepted**: apply → re-run → if clean, print `PKG_CHECK_OK_AFTER_FIXES` and continue.
+- **Secrets detected**: hard STOP with the verbatim secrets-detection block. ALL contexts.
 
 ## Output
 
@@ -130,12 +280,9 @@ If the user picks "Apply selected", show a multiSelect AskUserQuestion listing e
 
 ## When this skill is called
 
-- **Manually**: invoke `/verify` (wrapper) or `/solo-npm:verify`
-  (baseline) after a change to confirm it's ready.
-- **Automatically**: `/solo-npm:release` calls this in Phase A.2
-  (pre-flight) and Phase C.4 (post-bump verification).
-- **Composed**: `/solo-npm:deps` calls this between dep-upgrade
-  batches; rolls back on failure.
+- **Manually**: invoke `/verify` (wrapper) or `/solo-npm:verify` (baseline) after a change to confirm it's ready.
+- **Pkg-check only**: `/solo-npm:verify --pkg-check-only` for fast publish-readiness check; called from `/solo-npm:init` Phase 1d.
+- **Automatically**: `/solo-npm:release` calls this in Phase A.2 (pre-flight) and Phase C.4 (post-bump verification). `/solo-npm:prerelease` and `/solo-npm:hotfix` invoke in their Phase A pre-flights.
+- **Composed**: `/solo-npm:deps` calls this between dep-upgrade batches; rolls back on failure. Skips Tier 5 (deps don't touch manifest/tarball).
 
-As long as the verify skill returns `VERIFY_OK` for a clean state,
-downstream skills proceed.
+As long as the verify skill returns `VERIFY_OK` for a clean state, downstream skills proceed.

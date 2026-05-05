@@ -1,12 +1,12 @@
 # npm operator capabilities — solo-npm coverage analysis
 
-> Status: research deliverable. **v0.6.0 shipped**: `/dist-tag`, `/deprecate`, `/owner` skills landed; `/verify` extended with pkg-check; README reframed around the npm-operator-capability narrative.
+> Status: research deliverable. **v0.6.1 shipped**: pkg-check enhanced with publint + tarball audit + gitignore-vs-files divergence; `/init` Phase 1d validates manifest before claiming "complete". **v0.6.0 shipped**: `/dist-tag`, `/deprecate`, `/owner` skills landed; `/verify` extended with pkg-check Step 5; README reframed.
 
-## TL;DR (post v0.6.0)
+## TL;DR (post v0.6.1)
 
-- solo-npm now covers **all four real gaps** identified in this analysis: post-publish dist-tag mgmt, version deprecation, owner mgmt, manifest completeness validation.
-- **`/solo-npm:verify` retained** as the only skill that's not strictly an npm-operator capability — it's a release-safety gate. Now explicitly classified as "safety + infrastructure" in the README's two-kinds-of-skills section.
-- **README reframed**: opener is now *"AI skills for every npm operator capability a solo dev actually uses — plus the safety gates and infrastructure around them."* New "npm coverage" table maps each npm capability to its skill (or non-goal). New capability→skill diagram.
+- solo-npm covers **all four real gaps** identified in this analysis: post-publish dist-tag mgmt (`/dist-tag`), version deprecation (`/deprecate`), owner mgmt (`/owner`), and manifest completeness validation (`/verify` Step 5: pkg-check, now backed by `publint` + `npm pack --dry-run` audit as of v0.6.1).
+- **`/solo-npm:verify` retained** as the only skill that's not strictly an npm-operator capability — it's a release-safety gate. Classified as "safety + infrastructure" in the README's two-kinds-of-skills section.
+- **README reframed** (twice): the v0.6.0 opener was *"AI skills for every npm operator capability a solo dev actually uses…"*; current opener (after a later iteration) is *"AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, deps, owner, trust — with verify gates and provenance baked in."* User-facing copy uses **"npm command"** instead of *"npm operator capability"*; this analytical doc keeps "operator capability" intentionally as the analytical frame. (See §10 Terminology note.)
 
 ---
 
@@ -102,21 +102,24 @@ Grouped by functional category. ★ marks operations that a solo-dev publisher r
 
 ## 2. Inventory — what solo-npm covers today
 
-For each of the 9 skills, the npm CLI commands and registry features it actually orchestrates:
+For each of the 12 skills, the npm CLI commands and registry features it actually orchestrates:
 
 | solo-npm skill | npm CLI commands invoked | npm registry features touched | Lifecycle phase |
 |---|---|---|---|
 | `/solo-npm:init` | `npm pkg` (publishConfig), `npm-trust --doctor` | dist-tags (via release.yml three-layer detection); OIDC scaffold | Bootstrap |
 | `/solo-npm:trust` | `npm login` (manual handoff), `npm-trust github` | OIDC Trusted Publishing config; web 2FA | Bootstrap |
-| `/solo-npm:verify` | `npm run lint/typecheck/test/build` (or pnpm equivalent) | (none — local quality gates) | Per-release wrapper |
+| `/solo-npm:verify` | `npm run lint/typecheck/test/build` (or pnpm equivalent); `pnpm dlx publint`; `npm pack --dry-run` | Tarball composition validation (Tier 3) | Per-release wrapper |
 | `/solo-npm:release` | `npm version` (auto-bump), `git tag` triggers CI's `npm publish --provenance=true` | OIDC publish; provenance attestation; dist-tag detection (via release.yml) | Per-release |
 | `/solo-npm:prerelease` | `npm version --no-git-tag-version`; CI's `npm publish --tag next` | dist-tag `@next`; provenance | Lifecycle transition |
 | `/solo-npm:hotfix` | `npm version`, `npm pkg set publishConfig.tag`; CI's `npm publish --tag <X>` | dist-tag `@latest` or `@v<major>` | Lifecycle transition |
 | `/solo-npm:status` | `npm view <pkg> --json` (incl. dist-tags); downloads API; `gh` queries | Registry read; dist-tags display | Operate |
 | `/solo-npm:audit` | `pnpm audit` (or npm/yarn audit) | Security advisories | Operate |
 | `/solo-npm:deps` | `npm outdated`, `pnpm install`/`pnpm update` | (none — local dep tree) | Operate |
+| `/solo-npm:dist-tag` | `npm dist-tag add/rm/ls`; `npm view dist-tags`; `npm whoami` | Post-publish dist-tag mutations; `@latest`/`@next`/`@canary`/`@v<major>` channels | Operate |
+| `/solo-npm:deprecate` | `npm deprecate`; `npm view versions`/`@<v> deprecated` | Per-version deprecation messages; mass + reversible | Operate |
+| `/solo-npm:owner` | `npm owner add/rm/ls`; `npm whoami` | Maintainer mgmt across packages | Operate |
 
-**Observation**: 7 of the 9 skills directly orchestrate npm CLI commands. `/verify` is local-only quality gates (no npm CLI). `/init` is partially npm (publishConfig) + partially GitHub Actions infrastructure (release.yml).
+**Observation**: 10 of the 12 skills directly orchestrate npm CLI commands. `/verify` is mostly local quality gates but Tier 1+3 of pkg-check do invoke `publint` and `npm pack --dry-run`. `/init` is partially npm (publishConfig) + partially GitHub Actions infrastructure (release.yml).
 
 ---
 
@@ -149,13 +152,15 @@ For each of the 9 skills, the npm CLI commands and registry features it actually
 | `npm pack` | ✗ not covered | — | (non-goal — dev-time inspection) |
 | `npm search/star/fund` | ✗ not covered | — | (non-goal — non-release operations) |
 | `npm doctor` (local env) | ✗ not covered | — | (non-goal — covered by `npm-trust --doctor` for trust state) |
-| Pre-publish package.json completeness validation (README, LICENSE, exports, repository) | ✗ partial — `/init` scaffolds publishConfig but doesn't validate everything | — | MED |
+| Pre-publish package.json completeness validation (README, LICENSE, exports, repository) | ✓ shipped (v0.6.0 spec; v0.6.1 publint + pack-audit + gitignore-vs-files) | `/verify` Step 5: pkg-check + `/init` Phase 1d | — |
 
 ---
 
 ## 4. Gaps — analysis depth
 
-### 4.1 `/solo-npm:dist-tag` (HIGH priority)
+> **Status update (post v0.6.1)**: All four gaps in this section have shipped. The "Proposed shape" blocks below describe the design as-conceived; the actual skills (`.claude/commands/dist-tag.md`, `deprecate.md`, `owner.md`, `verify.md` Step 5) are the authoritative current spec. This section is preserved as the analytical record that drove the v0.6.0 / v0.6.1 design conversation.
+
+### 4.1 `/solo-npm:dist-tag` ✓ shipped (was HIGH priority)
 
 **The gap**: dist-tags are managed only at *publish time* (release.yml's three-layer detection). After publish, there's no skill to:
 
@@ -185,7 +190,7 @@ For each of the 9 skills, the npm CLI commands and registry features it actually
 
 Composes naturally with `/status` (cleanup the stale-@next warning), `/release` (rollback after botched release), and `/prerelease` (post-PROMOTE cleanup).
 
-### 4.2 `/solo-npm:deprecate` (HIGH priority)
+### 4.2 `/solo-npm:deprecate` ✓ shipped (was HIGH priority)
 
 **The gap**: there's no skill for retiring versions. When you need to:
 
@@ -215,7 +220,7 @@ Today: the user opens a terminal and runs `npm deprecate <pkg>@<range> "message"
 
 Composes with `/release` (post-major release: chain to /deprecate to retire previous major), with `/audit` (CVE response: deprecate the affected version range), and with `/hotfix` (after shipping v1.5.5 hotfix on a deprecated line, the existing deprecation message remains valid).
 
-### 4.3 `/solo-npm:owner` (MED priority)
+### 4.3 `/solo-npm:owner` ✓ shipped (was MED priority)
 
 **The gap**: solo-dev rarely needs this, but when they do, there's no skill.
 
@@ -246,25 +251,20 @@ Use cases:
 
 **Why LOW**: solo-dev rarely changes a package's access. When they do, it's a deliberate one-off — manual `npm access set` is fine.
 
-### 4.5 Pre-publish package.json completeness (MED priority)
+### 4.5 Pre-publish package.json completeness ✓ shipped (was MED priority)
 
-**The gap**: `/init` scaffolds publishConfig and engines.node but doesn't validate completeness. Missing fields that consumers expect:
+**The gap (was)**: `/init` scaffolded publishConfig and engines.node but didn't validate completeness. Missing fields consumers expect: `description`, `keywords`, `license` (and a `LICENSE` file), `repository`, `homepage`, `bugs`, `exports`/`main`, `files` (allowlist), `README.md`.
 
-- `description` — used in registry search results
-- `keywords` — discoverability
-- `license` (and a `LICENSE` file)
-- `repository` — links back to source
-- `homepage` — landing page
-- `bugs` — issue tracker URL
-- `exports` (modern) or `main` (legacy) — entry points
-- `files` (allowlist) — what gets included in the tarball
-- `README.md` exists and is non-empty
+**Shipped resolution (v0.6.0 + v0.6.1)**:
 
-These are checked by various lints (npm-package-json-lint, publint) but no solo-npm skill bundles them.
+- **v0.6.0**: `/verify` Step 5 (`pkg-check`) introduced as a manual checklist of 14 fields/files with severity-by-context and auto-fix offers (repository.url from git remote, MIT LICENSE scaffold, README stub).
+- **v0.6.1**: Replaced the manual checklist with a 3-tier spec:
+  1. **Tier 1 — `publint`** (industry-standard manifest validator). Catches malformed `exports`, missing `types` for TS, deprecated fields, etc.
+  2. **Tier 2 — manual checks** (publint blind spots): LICENSE file presence, README non-empty, `engines.node` ↔ `.nvmrc` consistency, **`.gitignore` vs `files`/`exports` divergence**.
+  3. **Tier 3 — `npm pack --dry-run` audit**: secrets detection (`.env`, `*.key`, etc. → HARD STOP), lockfile/test-file/editor-config warnings, oversize tarballs, missing LICENSE/README in the actual tarball.
+- **`/init` Phase 1d** invokes `/verify --pkg-check-only` after scaffolding so init never claims "complete" while leaving the manifest non-publish-ready.
 
-**Proposed shape**: extend `/verify` (or add `/lint`?) to include a `pkg-completeness` check. Surface missing fields with `AskUserQuestion` to fix or skip.
-
-Tighter scope: **bake the validation into `/init`'s pre-flight + `/release` Phase A**. If publish-critical fields are missing, surface as a STOP (with auto-fix offer for trivial ones like `repository` derivable from `git remote`).
+The v0.6.0 prose-checklist approach was already shipped but slow and inconsistent (Claude reading 14 rules manually). v0.6.1 replaced it with invoked tooling — much faster, comprehensive, externally-maintained rule set.
 
 ---
 
@@ -282,90 +282,54 @@ These are intentional additions because *the publishing flow as a whole* spans m
 
 ---
 
-## 6. Proposed framing alignment
+## 6. Framing alignment ✓ shipped
 
 ### 6.1 Repositioning statement
 
-**Current README opener**: *"The full npm publishing lifecycle for AI-driven solo developers."*
+**README opener history**:
 
-**Proposed**: *"AI skills for every npm operator capability a solo dev actually uses — plus the safety gates and infrastructure around them."*
+- **Pre-v0.6.0**: *"The full npm publishing lifecycle for AI-driven solo developers."*
+- **v0.6.0** (this section's original proposal): *"AI skills for every npm operator capability a solo dev actually uses — plus the safety gates and infrastructure around them."*
+- **Post-v0.6.0 iteration** (current): *"AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, deps, owner, trust — with verify gates and provenance baked in."*
 
-The new opener:
-- Foregrounds the npm-operator framing (responding to: "we should build skills around npm capabilities").
-- Acknowledges the safety/infrastructure layer ("plus the safety gates and infrastructure") rather than pretending /verify and release.yml scaffolding are npm.
-- Solo-dev framing remains.
+The current opener swaps "npm operator capability" for "npm command" in user-facing copy. This analytical doc keeps "operator capability" as the analytical frame; see §10 Terminology note.
 
-### 6.2 README structural change
+### 6.2 README "npm coverage" table ✓ shipped
 
-Add a new top-level section **"npm coverage"** between "The nine commands at a glance" and "Tell Claude". Single table:
+The README has had this section since v0.6.0 (between "The twelve commands at a glance" and "Tell Claude"). It maps each npm command to its skill (or non-goal). Current state of the table column header is **"npm command"** (was "npm operator capability" in v0.6.0).
 
-| npm operator capability | Skill | Status |
+The original proposal table is preserved below for historical reference; the live README table is canonical:
+
+| npm operator capability | Skill | Status (now) |
 |---|---|---|
 | `npm publish` (with provenance + OIDC) | `/release` | ✓ |
 | `npm version` (auto-bump from commits) | `/release` | ✓ |
 | `npm dist-tag` at publish time | release.yml three-layer detection (auto) | ✓ |
-| `npm dist-tag` post-publish (cleanup, repoint, channels) | `/dist-tag` | planned v0.6.0 |
+| `npm dist-tag` post-publish (cleanup, repoint, channels) | `/dist-tag` | ✓ shipped v0.6.0 |
 | `npm audit` (with risk classification) | `/audit` | ✓ |
 | `npm audit fix` (chained) | `/audit` → `/deps` | ✓ |
 | `npm outdated` + dep upgrades | `/deps` | ✓ |
 | `npm view` (portfolio dashboard) | `/status` | ✓ |
 | `npm login` + 2FA + OIDC trust config | `/trust` | ✓ |
-| `npm deprecate` (mass + reversible) | `/deprecate` | planned v0.6.0 |
-| `npm owner` add/rm/ls | `/owner` | planned v0.6.0 |
-| `npm access` set post-publish | (manual `npm access set`) | non-goal — rare |
-| `npm unpublish` | (manual `npm unpublish`) | non-goal — 24h window, rarely safe |
-| `npm token` mgmt | (manual `npm token`) | non-goal — OIDC obviates |
+| `npm deprecate` (mass + reversible) | `/deprecate` | ✓ shipped v0.6.0 |
+| `npm owner` add/rm/ls | `/owner` | ✓ shipped v0.6.0 |
+| Pre-publish manifest + tarball validation | `/verify` Step 5 | ✓ shipped v0.6.0 (spec) + v0.6.1 (publint + pack-audit) |
+| `npm access` set post-publish | (manual) | non-goal — rare |
+| `npm unpublish` | (manual) | non-goal — 24h window, rarely safe |
+| `npm token` mgmt | (manual) | non-goal — OIDC obviates |
 | `npm hook`, `npm org`, `npm team` | (manual) | non-goal — not solo-dev |
 
-This table makes the philosophy explicit AND honest about what's missing.
+### 6.3 "npm capability → skill" diagram ✓ added then deliberately removed
 
-### 6.3 Add a new diagram: "npm capability → skill"
+A capability→skill Mermaid diagram was added to the README's Architecture section in v0.6.0. It was **removed** (commit `1c6d403`) when the user asked to cut architecture diagrams that weren't earning their keep on the front page. The capability mapping now lives in the npm coverage table (§6.2 above), which is denser but more scannable.
 
-Replace or supplement the lifecycle diagram with a capability-axis view. Something like:
+### 6.4 Operator skills vs safety + infrastructure ✓ shipped
 
-```mermaid
-flowchart LR
-    subgraph CAPS["npm operator capabilities"]
-        publish["publish"]
-        version["version"]
-        distTag["dist-tag"]
-        deprecate["deprecate"]
-        owner["owner"]
-        audit["audit"]
-        outdated["outdated"]
-        view["view"]
-        login["login + 2FA + OIDC"]
-    end
-    subgraph SKILLS["solo-npm skills"]
-        skRelease["/release"]
-        skDistTag["/dist-tag (v0.6)"]
-        skDeprecate["/deprecate (v0.6)"]
-        skOwner["/owner (v0.6)"]
-        skAudit["/audit"]
-        skDeps["/deps"]
-        skStatus["/status"]
-        skTrust["/trust"]
-    end
-    publish --> skRelease
-    version --> skRelease
-    distTag --> skDistTag
-    deprecate --> skDeprecate
-    owner --> skOwner
-    audit --> skAudit
-    outdated --> skDeps
-    view --> skStatus
-    login --> skTrust
-```
+The Architecture section's "Two kinds of skills" subsection states the boundary:
 
-This complements the lifecycle diagram. Lifecycle = "when do I use which skill?". Capability = "which npm operation does this skill orchestrate?".
-
-### 6.4 Distinguish "operator skills" from "safety + infrastructure"
-
-In the "Architecture" section, add a clear paragraph:
-
-> **Two kinds of skills.** solo-npm has **operator skills** (`/release`, `/audit`, `/deps`, `/status`, `/trust`, `/dist-tag` v0.6, `/deprecate` v0.6, `/owner` v0.6) which orchestrate npm CLI commands and registry features. It also has **safety + infrastructure skills** (`/init`, `/verify`) which scaffold the release-flow plumbing and gate operator skills with quality checks. The lifecycle/transition skills (`/prerelease`, `/hotfix`) span both — they orchestrate npm operations within a controlled branching workflow.
-
-This is honest framing. It tells the LLM agent *and* the human reader exactly what each skill is for.
+- **Operator skills** (`/release`, `/audit`, `/deps`, `/status`, `/trust`, `/dist-tag`, `/deprecate`, `/owner`) orchestrate npm CLI commands and registry features.
+- **Safety + infrastructure skills** (`/init`, `/verify`) scaffold the release-flow plumbing and gate operator skills with quality checks.
+- **Lifecycle/transition skills** (`/prerelease`, `/hotfix`) span both.
 
 ---
 
@@ -391,21 +355,21 @@ All Tier 1 + Tier 2 items from the original ranking landed in v0.6.0.
 
 ---
 
-## 8. Migration plan (if user agrees)
+## 8. Migration ✓ complete
 
-If the user approves a v0.6.0 with Tier 1:
+v0.6.0 shipped per §7 (all four gaps closed). v0.6.1 followed with the publint + pack-audit + gitignore-vs-files enhancement to `/verify` Step 5 + `/init` Phase 1d validation gate.
 
-1. Bump v0.5.5 → v0.6.0 in package.json + plugin.json.
-2. Add `/solo-npm:dist-tag` (10th skill) and `/solo-npm:deprecate` (11th skill) to `.claude/commands/`.
-3. Update lifecycle diagram to include the two new skills (under OPERATE — continuous lane).
-4. Add the **npm coverage** table to README (per §6.2).
-5. Add the **capability → skill** diagram (per §6.3).
-6. Update "The nine commands" → "The eleven commands" (sorry).
-7. Update plugin.json description to mention the 11 commands.
-8. Add CHANGELOG v0.6.0 entry.
-9. Update `/release` and `/audit` to optionally chain into `/deprecate` after major releases or critical CVEs.
+Historical migration sequence (now committed):
 
-If user disagrees: leave at 9 skills, just update the README framing per §6.1, §6.2, §6.4. Keep the analysis as a future-reference doc.
+1. Bumped `package.json` + `plugin.json` 0.5.5 → 0.6.0 → 0.6.1.
+2. Added `/solo-npm:dist-tag` (10th skill), `/solo-npm:deprecate` (11th), `/solo-npm:owner` (12th) to `.claude/commands/`.
+3. Updated lifecycle diagram to include all 12 skills; later simplified to a 3-box sales-pitch ("YOU → solo-npm → DONE").
+4. Added the **npm coverage** table to README.
+5. Added the capability→skill diagram (then removed in `1c6d403` per scope cleanup).
+6. Updated "twelve commands" detail subsections.
+7. Updated plugin.json + marketplace.json descriptions.
+8. CHANGELOG v0.6.0 + v0.6.1 entries.
+9. `/release` Phase G post-major chain → `/deprecate`. `/audit` Phase 5 gate gained "Deprecate affected versions" option.
 
 ---
 
@@ -414,3 +378,18 @@ If user disagrees: leave at 9 skills, just update the README framing per §6.1, 
 - This analysis is a snapshot at npm 11 (early 2026). npm continues to evolve (sbom command landed in npm 10, granular tokens landed in npm 8.13, OIDC Trusted Publishing is fresh). v0.7.0+ should re-run this exercise.
 - The "non-goal" classifications reflect *solo-dev priors*. A team-of-N maintainer would value `npm org/team` and `npm token` mgmt highly. solo-npm's positioning is solo-dev; if that ever expands, the non-goals reopen.
 - Some "gaps" are arguably better solved by simply documenting the manual command. `/owner` is borderline — adding a skill for an operation that fires once a year may not earn its skill-file weight. The Tier 2 placement reflects this ambivalence.
+
+---
+
+## 10. Terminology note: "operator capability" vs "npm command"
+
+The term **"npm operator capability"** is used throughout this analysis as the analytical frame — it captures the union of CLI commands AND registry features (e.g., OIDC Trusted Publishing isn't a CLI command but is an operator capability).
+
+In **user-facing copy** (README, banner, plugin/marketplace descriptions) the term was simplified to **"npm command"** in a post-v0.6.0 iteration. The shorter term is more concrete for readers who think in terms of `npm publish`/`npm version`/etc., even though it slightly under-sells the registry-feature side (provenance, OIDC, dist-tags-as-channels).
+
+Both terms are intentional:
+
+- **This doc** keeps "operator capability" because the analytical comparison spans CLI + registry; collapsing to "command" would lose precision.
+- **README/banner/descriptions** use "npm command" because user-facing copy benefits from the more concrete word.
+
+If a future reframing pushes user-facing copy back to "operator capability" (or to a third term), update §6.1 above.
