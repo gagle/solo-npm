@@ -37,7 +37,7 @@ flowchart LR
         release["/solo-npm:release"]
         verify --> release
     end
-    subgraph LT["LIFECYCLE TRANSITIONS — rare"]
+    subgraph LT["TRANSITIONS — rare"]
         direction TB
         prerelease["/solo-npm:prerelease"]
         hotfix["/solo-npm:hotfix"]
