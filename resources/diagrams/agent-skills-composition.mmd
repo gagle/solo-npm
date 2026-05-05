@@ -1,0 +1,33 @@
+%%{init: {'theme':'base','themeVariables':{
+  'primaryColor':'#cb3837',
+  'primaryTextColor':'#ffffff',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
+  'background':'#111114',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
+  'tertiaryBkg':'#2c2a32',
+  'clusterBkg':'#18171c',
+  'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
+  'edgeLabelBackground':'#18171c',
+  'fontFamily':'ui-monospace, monospace'
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+flowchart LR
+    subgraph AS["addyosmani/agent-skills — DEVELOPMENT"]
+        spec["spec / plan"]
+        build["build / test"]
+        review["review / debug"]
+    end
+    subgraph SN["solo-npm — RELEASE + MAINTAIN"]
+        snrel["init / trust / verify / release"]
+        snlife["prerelease / hotfix"]
+        snops["status / audit / deps"]
+    end
+    spec --> build
+    build --> review
+    review ==>|"ship the result"| SN
+    SN -.->|"compose at /hotfix Phase D (debugging-and-error-recovery)"| review
+    SN -.->|"compose at /deps verify-fail (debugging-and-error-recovery)"| review

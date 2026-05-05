@@ -46,6 +46,7 @@ every time.
 - **Marketplace plugin compatibility**: changes to `.claude-plugin/`
   manifests are validated against the Claude Code marketplace spec.
 - **AI-only contribution model**: PRs disabled at the GitHub level.
+- **Diagram-mirror convention**: when you edit a Mermaid block in `README.md`, mirror the change to the matching file under `resources/diagrams/<name>.mmd`. The inline block in `README.md` is the source of truth; the `.mmd` copies exist for editor tooling (VS Code Mermaid preview, etc.). GitHub-flavored Markdown does not support importing external files into a rendered README, so the inline block can't go away.
 
 ## Dogfooding
 

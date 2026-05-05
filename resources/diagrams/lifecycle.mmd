@@ -1,0 +1,45 @@
+%%{init: {'theme':'base','themeVariables':{
+  'primaryColor':'#cb3837',
+  'primaryTextColor':'#ffffff',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
+  'background':'#111114',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
+  'tertiaryBkg':'#2c2a32',
+  'clusterBkg':'#18171c',
+  'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
+  'edgeLabelBackground':'#18171c',
+  'fontFamily':'ui-monospace, monospace'
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+flowchart LR
+    subgraph BS["BOOTSTRAP — one-time"]
+        direction TB
+        init["/solo-npm:init"]
+        trust["/solo-npm:trust"]
+        init --> trust
+    end
+    subgraph PR["PER RELEASE — daily"]
+        direction TB
+        verify["/solo-npm:verify"]
+        release["/solo-npm:release"]
+        verify --> release
+    end
+    subgraph LT["TRANSITIONS — rare"]
+        direction TB
+        prerelease["/solo-npm:prerelease"]
+        hotfix["/solo-npm:hotfix"]
+    end
+    subgraph OP["OPERATE — continuous"]
+        direction TB
+        status["/solo-npm:status"]
+        audit["/solo-npm:audit"]
+        deps["/solo-npm:deps"]
+        audit --> deps
+    end
+    BS ==> PR
+    PR <-.auto-chain.-> LT
+    PR -.cache-aware.-> OP

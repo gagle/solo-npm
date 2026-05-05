@@ -1,0 +1,29 @@
+%%{init: {'theme':'base','themeVariables':{
+  'primaryColor':'#cb3837',
+  'primaryTextColor':'#ffffff',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
+  'background':'#111114',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
+  'tertiaryBkg':'#2c2a32',
+  'clusterBkg':'#18171c',
+  'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
+  'edgeLabelBackground':'#18171c',
+  'fontFamily':'ui-monospace, monospace'
+},'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
+flowchart TD
+    start(["User: /release"]) --> phaseA["Phase A — pre-flight<br/>verify · trust cache · audit cache"]
+    phaseA -->|missing trust| toTrust["auto-chain → /solo-npm:trust"]
+    phaseA -->|version is pre-release| toPre["auto-chain → /solo-npm:prerelease"]
+    phaseA -->|cached audit Tier-1 &gt; 0| stop1["STOP — fix CVEs first"]
+    phaseA -->|stable + healthy| phaseB["Phase B — plan<br/>auto-bump · changelog draft"]
+    phaseB --> ask{{"AskUserQuestion<br/>Proceed / Abort"}}
+    ask -->|Abort| stop2["END"]
+    ask -->|Proceed| phaseC["Phase C — execute<br/>bump · commit · tag · CI · npm verify"]
+    phaseC --> done(["Released to npm with provenance"])
+    toTrust --> phaseA
+    toPre --> end3(["pre-release flow"])

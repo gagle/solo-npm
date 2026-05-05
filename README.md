@@ -1,4 +1,6 @@
-<h1 align="center">solo-npm</h1>
+<p align="center">
+  <img src="./resources/banner.svg" alt="solo-npm — AI-driven npm publishing for solo developers" width="640">
+</p>
 
 <p align="center"><b>The full npm publishing lifecycle for AI-driven solo developers.</b></p>
 
@@ -8,19 +10,19 @@ Nine slash commands that take an empty repo to a tag-triggered OIDC release flow
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#7e47ff',
+  'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a8a4fd',
-  'lineColor':'#a8a4fd',
-  'secondaryColor':'#5620bc',
-  'tertiaryColor':'#401e8a',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
   'background':'#111114',
-  'mainBkg':'#7e47ff',
-  'secondBkg':'#5620bc',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
   'tertiaryBkg':'#2c2a32',
   'clusterBkg':'#18171c',
   'clusterBorder':'#56555b',
-  'titleColor':'#a8a4fd',
+  'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
 },'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
@@ -304,18 +306,19 @@ solo-npm is the **release operator**. It deliberately does NOT cover development
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#7e47ff',
+  'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a8a4fd',
-  'lineColor':'#a8a4fd',
-  'secondaryColor':'#5620bc',
-  'tertiaryColor':'#401e8a',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
   'background':'#111114',
-  'mainBkg':'#7e47ff',
-  'secondBkg':'#5620bc',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
   'tertiaryBkg':'#2c2a32',
   'clusterBkg':'#18171c',
   'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
 },'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
@@ -377,18 +380,19 @@ Both plugins work standalone. **Recommended setup**: install both.
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#7e47ff',
+  'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a8a4fd',
-  'lineColor':'#a8a4fd',
-  'secondaryColor':'#5620bc',
-  'tertiaryColor':'#401e8a',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
   'background':'#111114',
-  'mainBkg':'#7e47ff',
-  'secondBkg':'#5620bc',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
   'tertiaryBkg':'#2c2a32',
   'clusterBkg':'#18171c',
   'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
 },'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
@@ -414,18 +418,19 @@ The wrapper is just a thin file with repo context (workspace shape, verify comma
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#7e47ff',
+  'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a8a4fd',
-  'lineColor':'#a8a4fd',
-  'secondaryColor':'#5620bc',
-  'tertiaryColor':'#401e8a',
+  'primaryBorderColor':'#ff6b6a',
+  'lineColor':'#ff6b6a',
+  'secondaryColor':'#a02320',
+  'tertiaryColor':'#7d1c1a',
   'background':'#111114',
-  'mainBkg':'#7e47ff',
-  'secondBkg':'#5620bc',
+  'mainBkg':'#cb3837',
+  'secondBkg':'#a02320',
   'tertiaryBkg':'#2c2a32',
   'clusterBkg':'#18171c',
   'clusterBorder':'#56555b',
+  'titleColor':'#ff6b6a',
   'edgeLabelBackground':'#18171c',
   'fontFamily':'ui-monospace, monospace'
 },'flowchart':{'padding':20,'subGraphTitleMargin':{'top':15,'bottom':15}}}}%%
@@ -588,6 +593,7 @@ The following are deliberate non-goals — labelling them prevents scope creep. 
 - [`gagle/prepare-dist`](https://github.com/gagle/prepare-dist) — GitHub Action for translating monorepo source `package.json` → `dist/package.json` at publish time.
 - [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — recommended companion plugin for development-phase skills.
 - [`docs/prompts.md`](./docs/prompts.md) — natural-language prompts → skill mapping reference, with compound real-world workflows.
+- [`resources/`](./resources) — visual assets: hero banner SVG, plus standalone `.mmd` copies of each diagram for editor tooling (the inline blocks in this README remain the source of truth).
 
 ---
 
