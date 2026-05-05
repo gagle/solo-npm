@@ -752,7 +752,6 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md#dogfooding) for details.
 - [`gagle/prepare-dist`](https://github.com/gagle/prepare-dist) — GitHub Action for translating monorepo source `package.json` → `dist/package.json` at publish time.
 - [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — recommended companion plugin for development-phase skills.
 - [`docs/prompts.md`](./docs/prompts.md) — natural-language prompts → skill mapping reference, with compound real-world workflows.
-- [`resources/`](./resources) — visual assets: hero banner SVG, plus standalone `.mmd` copies of each diagram for editor tooling (the inline blocks in this README remain the source of truth).
 
 ---
 
