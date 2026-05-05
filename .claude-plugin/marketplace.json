@@ -11,7 +11,7 @@
         "source": "github",
         "repo": "gagle/solo-npm"
       },
-      "description": "Twelve AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, outdated, view, owner, login + 2FA + OIDC. Bootstrap (init, trust), per-release (release, verify with publint + tarball-content audit), lifecycle transitions (prerelease, hotfix with cherry-pick), operate (status, audit, deps, dist-tag, deprecate, owner). OIDC + provenance; foolproof npm login handoff for registry mutations; HARD STOP on secrets detected in publish tarball. Composes with addyosmani/agent-skills for development phases."
+      "description": "AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, deps, owner, trust — with verify gates and provenance baked in."
     }
   ]
 }
