@@ -1,8 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" role="img" aria-label="solo-npm — AI skills for every npm operator capability solo devs use">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" style="background:transparent" role="img" aria-label="solo-npm — AI skills for every npm operator capability solo devs use">
   <title>solo-npm</title>
   <desc>AI skills for every npm operator capability solo devs use</desc>
 
+  <!-- No background rect — banner is transparent and inherits the page background. -->
+
   <style>
+    svg { background: transparent; }
     .solo-text { fill: #1a1a1a; }
     .tagline { fill: #5a5a5c; }
     .corner-spark { fill: #b22e2d; opacity: 0.20; }
