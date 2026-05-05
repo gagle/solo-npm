@@ -15,51 +15,26 @@
   'primaryBorderColor':'#a02320',
   'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
+  'secondaryTextColor':'#ffffff',
+  'secondaryBorderColor':'#7d1c1a',
   'tertiaryColor':'#7d1c1a',
+  'tertiaryTextColor':'#ffffff',
+  'tertiaryBorderColor':'#5a1413',
   'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'transparent',
+  'tertiaryBkg':'#7d1c1a',
   'clusterBkg':'transparent',
   'clusterBorder':'#d0d0d0',
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
-    subgraph BS["BOOTSTRAP<br/>one-time"]
-        direction TB
-        init["/solo-npm:init"]
-        trust["/solo-npm:trust"]
-        init --> trust
-    end
-    subgraph PR["PER RELEASE<br/>daily"]
-        direction TB
-        verify["/solo-npm:verify"]
-        release["/solo-npm:release"]
-        verify --> release
-    end
-    subgraph LT["TRANSITIONS<br/>rare"]
-        direction TB
-        prerelease["/solo-npm:prerelease"]
-        hotfix["/solo-npm:hotfix"]
-    end
-    subgraph OP["OPERATE<br/>continuous"]
-        direction TB
-        status["/solo-npm:status"]
-        audit["/solo-npm:audit"]
-        deps["/solo-npm:deps"]
-        distTag["/solo-npm:dist-tag"]
-        deprecate["/solo-npm:deprecate"]
-        owner["/solo-npm:owner"]
-        audit --> deps
-        audit -.-> deprecate
-        status -.-> distTag
-    end
-    BS ==> PR
-    PR <-.auto-chain.-> LT
-    PR -.cache-aware.-> OP
-    PR -.post-major.-> deprecate
+    you["YOU<br/>type a prompt"]
+    sn["solo-npm<br/>12 AI skills<br/>wrap every npm command"]
+    done["DONE<br/>signed, verified,<br/>on npm"]
+    you ==> sn ==> done
 ```
 
 ---
@@ -407,17 +382,21 @@ solo-npm is the **release operator**. It deliberately does NOT cover development
   'primaryBorderColor':'#a02320',
   'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
+  'secondaryTextColor':'#ffffff',
+  'secondaryBorderColor':'#7d1c1a',
   'tertiaryColor':'#7d1c1a',
+  'tertiaryTextColor':'#ffffff',
+  'tertiaryBorderColor':'#5a1413',
   'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'transparent',
+  'tertiaryBkg':'#7d1c1a',
   'clusterBkg':'transparent',
   'clusterBorder':'#d0d0d0',
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
     subgraph AS["agent-skills<br/>DEVELOPMENT"]
         spec["spec / plan"]
@@ -506,17 +485,21 @@ This distinction matters when reasoning about composition: operator skills are t
   'primaryBorderColor':'#a02320',
   'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
+  'secondaryTextColor':'#ffffff',
+  'secondaryBorderColor':'#7d1c1a',
   'tertiaryColor':'#7d1c1a',
+  'tertiaryTextColor':'#ffffff',
+  'tertiaryBorderColor':'#5a1413',
   'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'transparent',
+  'tertiaryBkg':'#7d1c1a',
   'clusterBkg':'transparent',
   'clusterBorder':'#d0d0d0',
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
     subgraph CAPS["npm commands"]
         publish["publish"]
@@ -559,17 +542,21 @@ flowchart LR
   'primaryBorderColor':'#a02320',
   'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
+  'secondaryTextColor':'#ffffff',
+  'secondaryBorderColor':'#7d1c1a',
   'tertiaryColor':'#7d1c1a',
+  'tertiaryTextColor':'#ffffff',
+  'tertiaryBorderColor':'#5a1413',
   'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'transparent',
+  'tertiaryBkg':'#7d1c1a',
   'clusterBkg':'transparent',
   'clusterBorder':'#d0d0d0',
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart TD
     user["User types /release"]
     wrapper["Consumer wrapper<br/>.claude/skills/release/SKILL.md<br/>(repo-specific narrative)"]
@@ -597,17 +584,21 @@ The wrapper is just a thin file with repo context (workspace shape, verify comma
   'primaryBorderColor':'#a02320',
   'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
+  'secondaryTextColor':'#ffffff',
+  'secondaryBorderColor':'#7d1c1a',
   'tertiaryColor':'#7d1c1a',
+  'tertiaryTextColor':'#ffffff',
+  'tertiaryBorderColor':'#5a1413',
   'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'transparent',
+  'tertiaryBkg':'#7d1c1a',
   'clusterBkg':'transparent',
   'clusterBorder':'#d0d0d0',
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart TD
     start(["User: /release"]) --> phaseA["Phase A — pre-flight<br/>verify · trust cache · audit cache"]
     phaseA -->|missing trust| toTrust["auto-chain → /solo-npm:trust"]
