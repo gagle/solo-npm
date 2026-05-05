@@ -37,6 +37,18 @@ flowchart LR
     you ==> sn ==> done
 ```
 
+> ### 🤖 Built to be driven by Claude
+>
+> **Open Claude Code in your repo, say *"Integrate solo-npm and follow the Quick Start"*, and from then on every release, audit, hotfix, and dep upgrade is one prompt away.** No manual `npm version`, no manual `git tag`, no manual changelog — Claude orchestrates the 12 skills end-to-end.
+>
+> **For solo devs**, this means:
+> - **Daily release**: type *"ship it"* — Claude runs `/verify`, bumps the version from your commits, tags, watches CI, and verifies the registry attestation.
+> - **CVE alert**: type *"audit my deps"* — Claude classifies, fixes Tier-1, runs `/verify`, commits the bump.
+> - **Hotfix on v1**: type *"fix the v1 rate-limiter, it crashes on 429"* — Claude branches, applies the fix, ships the patch with the right dist-tag.
+> - **Morning check**: type *"how are my packages doing"* — Claude renders a portfolio dashboard.
+>
+> No CLI to memorise. No browser tabs to open. **Just describe what you want.**
+
 ---
 
 ## Table of contents
@@ -375,46 +387,6 @@ Severity by context: standalone `/verify` surfaces errors as warnings (don't hal
 
 solo-npm is the **release operator**. It deliberately does NOT cover development phases (writing code, designing architecture, debugging methodology). For those, install [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) alongside.
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#cb3837',
-  'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a02320',
-  'lineColor':'#cb3837',
-  'secondaryColor':'#a02320',
-  'secondaryTextColor':'#ffffff',
-  'secondaryBorderColor':'#7d1c1a',
-  'tertiaryColor':'#7d1c1a',
-  'tertiaryTextColor':'#ffffff',
-  'tertiaryBorderColor':'#5a1413',
-  'background':'transparent',
-  'mainBkg':'#cb3837',
-  'secondBkg':'#a02320',
-  'tertiaryBkg':'#7d1c1a',
-  'clusterBkg':'transparent',
-  'clusterBorder':'#d0d0d0',
-  'titleColor':'#a02320',
-  'edgeLabelBackground':'#ffffff',
-  'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
-flowchart LR
-    subgraph AS["agent-skills<br/>DEVELOPMENT"]
-        spec["spec / plan"]
-        build["build / test"]
-        review["review / debug"]
-    end
-    subgraph SN["solo-npm<br/>RELEASE + MAINTAIN"]
-        snrel["init / trust / verify / release"]
-        snlife["prerelease / hotfix"]
-        snops["status / audit / deps"]
-    end
-    spec --> build
-    build --> review
-    review ==>|"ship the result"| SN
-    SN -.->|"compose at /hotfix Phase D (debugging-and-error-recovery)"| review
-    SN -.->|"compose at /deps verify-fail (debugging-and-error-recovery)"| review
-```
-
 **The boundary**: ask *"is this CONFIGURING THE RELEASE FLOW or WRITING USER CODE?"*
 
 - Configuring → solo-npm
@@ -476,97 +448,9 @@ The lifecycle/transition skills span both — they orchestrate npm operations wi
 
 This distinction matters when reasoning about composition: operator skills are the leaves of the workflow tree; safety + infrastructure skills are the trunks.
 
-### Capability → skill mapping
-
-```mermaid
-%%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#cb3837',
-  'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a02320',
-  'lineColor':'#cb3837',
-  'secondaryColor':'#a02320',
-  'secondaryTextColor':'#ffffff',
-  'secondaryBorderColor':'#7d1c1a',
-  'tertiaryColor':'#7d1c1a',
-  'tertiaryTextColor':'#ffffff',
-  'tertiaryBorderColor':'#5a1413',
-  'background':'transparent',
-  'mainBkg':'#cb3837',
-  'secondBkg':'#a02320',
-  'tertiaryBkg':'#7d1c1a',
-  'clusterBkg':'transparent',
-  'clusterBorder':'#d0d0d0',
-  'titleColor':'#a02320',
-  'edgeLabelBackground':'#ffffff',
-  'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
-flowchart LR
-    subgraph CAPS["npm commands"]
-        publish["publish"]
-        version["version"]
-        distTagCap["dist-tag"]
-        deprecateCap["deprecate"]
-        ownerCap["owner"]
-        auditCap["audit"]
-        outdatedCap["outdated"]
-        viewCap["view"]
-        loginCap["login + 2FA + OIDC"]
-    end
-    subgraph SKILLS["solo-npm skills"]
-        skRelease["/release"]
-        skDistTag["/dist-tag"]
-        skDeprecate["/deprecate"]
-        skOwner["/owner"]
-        skAudit["/audit"]
-        skDeps["/deps"]
-        skStatus["/status"]
-        skTrust["/trust"]
-    end
-    publish --> skRelease
-    version --> skRelease
-    distTagCap --> skDistTag
-    deprecateCap --> skDeprecate
-    ownerCap --> skOwner
-    auditCap --> skAudit
-    outdatedCap --> skDeps
-    viewCap --> skStatus
-    loginCap --> skTrust
-```
-
 ### Plugin baseline + thin wrapper pattern
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#cb3837',
-  'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a02320',
-  'lineColor':'#cb3837',
-  'secondaryColor':'#a02320',
-  'secondaryTextColor':'#ffffff',
-  'secondaryBorderColor':'#7d1c1a',
-  'tertiaryColor':'#7d1c1a',
-  'tertiaryTextColor':'#ffffff',
-  'tertiaryBorderColor':'#5a1413',
-  'background':'transparent',
-  'mainBkg':'#cb3837',
-  'secondBkg':'#a02320',
-  'tertiaryBkg':'#7d1c1a',
-  'clusterBkg':'transparent',
-  'clusterBorder':'#d0d0d0',
-  'titleColor':'#a02320',
-  'edgeLabelBackground':'#ffffff',
-  'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
-flowchart TD
-    user["User types /release"]
-    wrapper["Consumer wrapper<br/>.claude/skills/release/SKILL.md<br/>(repo-specific narrative)"]
-    baseline["Plugin baseline<br/>.claude/commands/release.md<br/>(opinionated workflow)"]
-    user --> wrapper
-    wrapper -->|"composes"| baseline
-    baseline --> exec["Phase A → B → C<br/>tag + CI + npm"]
-```
-
-The wrapper is just a thin file with repo context (workspace shape, verify commands, prepare-dist usage). It **invokes** the plugin baseline; the merged guidance sits in the agent's context. Per-repo customization without forking the whole skill.
+When you type `/release` in your repo, Claude loads a thin wrapper at `.claude/skills/release/SKILL.md` (scaffolded by `/solo-npm:init`) that **invokes** the plugin baseline at `.claude/commands/release.md`. The wrapper carries repo-specific context (workspace shape, verify commands, prepare-dist usage); the baseline carries the opinionated workflow. Both bodies sit in Claude's context — merged guidance, no fork.
 
 | Command | Wrapper? | Why |
 |---|---|---|
@@ -577,43 +461,7 @@ The wrapper is just a thin file with repo context (workspace shape, verify comma
 
 ### Release anatomy
 
-```mermaid
-%%{init: {'theme':'base','themeVariables':{
-  'primaryColor':'#cb3837',
-  'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#a02320',
-  'lineColor':'#cb3837',
-  'secondaryColor':'#a02320',
-  'secondaryTextColor':'#ffffff',
-  'secondaryBorderColor':'#7d1c1a',
-  'tertiaryColor':'#7d1c1a',
-  'tertiaryTextColor':'#ffffff',
-  'tertiaryBorderColor':'#5a1413',
-  'background':'transparent',
-  'mainBkg':'#cb3837',
-  'secondBkg':'#a02320',
-  'tertiaryBkg':'#7d1c1a',
-  'clusterBkg':'transparent',
-  'clusterBorder':'#d0d0d0',
-  'titleColor':'#a02320',
-  'edgeLabelBackground':'#ffffff',
-  'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect, .node polygon, .node ellipse, .node circle { rx: 8; ry: 8; } .node .label, .node .label p, .nodeLabel, .nodeLabel p { color: #ffffff !important; fill: #ffffff !important; } .cluster-label, .cluster-label p, .clusterLabel, .clusterLabel p { color: #a02320 !important; fill: #a02320 !important; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
-flowchart TD
-    start(["User: /release"]) --> phaseA["Phase A — pre-flight<br/>verify · trust cache · audit cache"]
-    phaseA -->|missing trust| toTrust["auto-chain → /solo-npm:trust"]
-    phaseA -->|version is pre-release| toPre["auto-chain → /solo-npm:prerelease"]
-    phaseA -->|cached audit Tier-1 &gt; 0| stop1["STOP — fix CVEs first"]
-    phaseA -->|stable + healthy| phaseB["Phase B — plan<br/>auto-bump · changelog draft"]
-    phaseB --> ask{{"AskUserQuestion<br/>Proceed / Abort"}}
-    ask -->|Abort| stop2["END"]
-    ask -->|Proceed| phaseC["Phase C — execute<br/>bump · commit · tag · CI · npm verify"]
-    phaseC --> done(["Released to npm with provenance"])
-    toTrust --> phaseA
-    toPre --> end3(["pre-release flow"])
-```
-
-**One human checkpoint per release.** Everything else is silent if green.
+`/release` runs three phases: **A** pre-flight (`/verify` + cache-aware trust + audit checks), **B** plan (auto-bump from commits, changelog draft, ONE `AskUserQuestion`), **C** execute (bump, commit, tag, CI watch, registry attestation verify). Auto-chains to `/trust` if trust missing, to `/prerelease` if version is pre-release-shape, and to `/deprecate` after a major. **One human checkpoint per release. Everything else is silent if green.**
 
 ### Cache architecture (`.solo-npm/state.json`)
 
