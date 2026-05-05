@@ -241,11 +241,16 @@ You:  Users on v1.5 are hitting a bug where the rate limiter doesn't honor
         commits, tags, pushes, CI publishes to @latest →
         Phase F: returns to main)
 You:  Now ship the next v2 beta with this same fix.
-       (forward-port is currently manual — user describes the fix again on main,
-        then /release auto-chains to /solo-npm:prerelease → bump to 2.0.0-beta.5)
+       (Phase F.5 of /hotfix already offered "Forward-port to main"; user picked
+        "Yes — cherry-pick and ship". Agent did `git cherry-pick <hotfix-sha>` on
+        main, ran /verify, then chained into /release → version is pre-release-shape
+        (2.0.0-beta.4) → auto-chained to /solo-npm:prerelease → user picked Bump →
+        2.0.0-beta.5 published to @next.)
 ```
 
-(Future: forward-porting becomes one prompt — out of scope for v0.5.4.)
+Forward-porting is automated since v0.6.0 via `/hotfix` Phase F.5. The cherry-pick
+is gated by an `AskUserQuestion` (Yes ship/Yes cherry-pick only/No skip); conflicts
+surface a structured handoff (resolve manually, then continue with /release).
 
 ### CVE landed in popular dep
 
@@ -321,6 +326,77 @@ You:  How are my packages?
        (status reads cached state.json, renders dashboard with no fresh npm calls —
         cross-machine cache works because state.json is committed)
 ```
+
+### GitHub Release page auto-fills on every release (v0.7.0)
+
+```
+You:  Ship a release.
+       (agent runs /release → Phase A silent → B.5 Proceed → Phase C executes →
+        C.7 verifies registry attestation → C.7.5 creates GitHub Release with
+        the just-prepended CHANGELOG entry as the body → C.7.6 caches
+        unpackedSize for next /verify Tier 4 baseline → C.8 final notification)
+
+[anyone watching the gagle/solo-npm repo gets a GitHub notification with the
+ release notes, not just a "tag pushed" event]
+```
+
+For pre-releases: GitHub Release is marked `--prerelease` so it shows the badge.
+For hotfixes on legacy lines: `--latest=false` so the GitHub Releases UI keeps
+the latest-badge on the current main-line stable.
+
+If `gh` is not installed or not authenticated: skipped silently with a non-fatal
+warning. The npm publish + git tag still go through; only the GitHub Release page
+stays empty.
+
+### Bundle-size regression caught (v0.7.0)
+
+```
+You:  Verify
+       (agent runs /verify → lint+typecheck+test+build pass →
+        Step 5 Tier 1 publint clean → Tier 2 manual checks clean →
+        Tier 3 npm pack --dry-run → Tier 4 compares unpackedSize to last
+        cached version: prior was 52 KB, current is 128 KB → +146.7% delta)
+
+⚠ Bundle-size regression on @ncbijs/eutils:
+    Prior (v1.5.0):   52,100 bytes
+    Current:         128,540 bytes
+    Delta:           +146.7%
+
+  Top 5 largest files in current tarball:
+    dist/some-vendored-lib.js  72,431 bytes  (NEW vs prior — likely accidentally bundled)
+    dist/index.js              31,200 bytes
+    ...
+
+  Investigate: did a dep get accidentally bundled? Did the build emit unminified output?
+
+You:  [investigate, fix the build config, re-run /verify]
+```
+
+No auto-fix — bundle size deltas need human investigation.
+First-run packages have no baseline; the cache builds organically over releases.
+Major version bumps suppress the warning (1.5.0 → 2.0.0 expected to grow).
+
+### One-stop morning health check (v0.7.0)
+
+```
+You:  How are my packages doing?
+       (agent runs /solo-npm:status → renders the dashboard table →
+        new "Portfolio health" section pulls audit + pkg-check counters from
+        state.json cache — zero npm calls, instant render)
+
+Portfolio health:
+  Audit:      Tier-1: 0  Tier-2: 0      (last scan: 2d ago)
+  Pkg-check:  errors: 0  warnings: 3    (last check: 6h ago)
+  Action:     none — all clean.
+
+You:  Tell me what's pending.
+       (status's drift column flagged 2 unreleased commits; action hint
+        suggests /release ready)
+```
+
+If a cache section is stale (>1d), the section shows "(stale — run /audit to refresh)"
+instead of the values. To force-refresh, invoke `/solo-npm:status --fresh` —
+runs /audit and /verify --pkg-check-only, then renders.
 
 ## Discoverability principles
 

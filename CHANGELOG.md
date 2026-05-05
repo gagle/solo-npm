@@ -1,5 +1,86 @@
 # Changelog
 
+## v0.7.0 — quality-of-life polish (no new skills, no scope expansion)
+
+Five enhancements across existing skills + one doc fix. Skill count stays at 12; no new tooling, no CI scripts, no new dependencies. Pure value-add to existing workflows.
+
+### GitHub Release notes auto-generation (`/release`, `/prerelease`, `/hotfix`)
+
+`/release` Phase C.7.5, `/prerelease` Phase C.7.5, and `/hotfix` Phase E.6 now invoke `gh release create` after the registry verification step, using the just-prepended `CHANGELOG.md` entry as the release notes body. Repo watchers get a rich GitHub notification on every release; the GitHub Release page is no longer empty.
+
+Variants:
+- Pre-releases (`/prerelease` START + BUMP) get `--prerelease`. PROMOTE results in a stable release; no flag.
+- Legacy-line hotfixes (target dist-tag = `@v<TARGET_MAJOR>`) get `--latest=false` so the GitHub Releases UI keeps the "Latest" badge on the current main-line stable.
+- Hotfixes attach to the maintenance branch via `--target <TARGET_MAJOR>.x`.
+
+Pre-flight checks `gh auth status`. If `gh` is unavailable or unauthenticated, the step is **gracefully skipped** with a non-fatal warning — the npm publish + git tag still go through; only the GitHub Release page stays empty.
+
+CHANGELOG entry extraction uses an awk-based extractor that finds the matching version header and stops at the next `## v` line. Robust to format variations.
+
+### Bundle-size Tier 4 in `/verify` Step 5
+
+A 4th tier in pkg-check tracks tarball size over time:
+
+- After Tier 3's `npm pack --dry-run` parses `unpackedSize`, look up the previous published version's recorded size in `.solo-npm/state.json#pkgCheck.lastSize` keyed by `<pkg>@<version>`.
+- Compute `delta = (current - prior) / prior * 100`.
+- `delta > +25%` → warning + top-5-largest-files breakdown for investigation.
+- `delta < -25%` → info (significant shrinkage; usually intentional).
+- First-run packages have no baseline; cache builds organically over releases.
+- Major version bumps (1.5.0 → 2.0.0) suppress the warning — major versions are expected to grow.
+
+The cache is updated by `/release` Phase C.7.6, `/prerelease` Phase C.7.6, and `/hotfix` Phase E.7 after each successful publish (writes the new version's `unpackedSize` to `pkgCheck.lastSize`).
+
+Optional integration with `size-limit`: if the repo has a `size-limit` config, also runs `pnpm dlx size-limit` and surfaces failing budgets as Tier 4 errors. Opt-in via config presence; we don't add the dep.
+
+No auto-fix — size deltas need human investigation.
+
+### `/status` Portfolio health section
+
+`/status` Phase 2 now also reads `.solo-npm/state.json#audit` and `#pkgCheck`. Phase 3 renders a new "Portfolio health" section after Maintenance lines:
+
+```
+Portfolio health:
+  Audit:      Tier-1: 0  Tier-2: 0      (last scan: 2d ago)
+  Pkg-check:  errors: 0  warnings: 3    (last check: 6h ago)
+  Action:     none — all clean.
+```
+
+Cache-stale cells substitute *"(stale — run `/audit` to refresh)"*. Missing-cache cells substitute *"(no scan yet — run `/solo-npm:audit`)"*.
+
+Default behavior: zero npm calls; pure cache reads. Optional `--fresh` flag forces re-run of `/audit` + `/verify --pkg-check-only` to populate fresh values.
+
+This makes `/status` a one-stop morning health check — replaces the routine of invoking `/status` then `/audit` then `/verify` separately.
+
+### `/init` Phase 2 guided initial-publish
+
+The v0.6.x STOP-and-resume pattern (*"go publish manually then re-invoke /init"*) is replaced with a guided flow:
+
+1. **Auth check**: `npm whoami`. If not authenticated, surface foolproof `npm login` handoff (numbered web 2FA steps).
+2. **Per-package publish gate** via `AskUserQuestion`: *"Run `npm publish --provenance=false --access public` now to claim the package name `<NAME>`?"* Options: Yes — publish now / I'll publish manually / Abort.
+3. **Execute on Yes**: agent runs the publish; surfaces success or verbatim npm error on failure.
+4. **Continues to Phase 3** trust config without requiring re-invocation.
+
+Keeps the user-in-the-loop AskUserQuestion gate (publish is destructive — claims the name on registry) while removing the awkward stop-and-resume. Manual path still available for users who prefer to run `npm publish` themselves.
+
+### `docs/prompts.md` refresh
+
+- Fixed line 244–248 ("forward-port is currently manual" — automated since v0.6.0 via `/hotfix` Phase F.5 cherry-pick).
+- Added 3 new v0.7.0 scenarios: GitHub Release page auto-fill, bundle-size regression catch, one-stop `/status` health check.
+
+### Out of scope (rejected during planning)
+
+- `/rollback` skill — npm doesn't unpublish; "fix and bump" is canonical recovery for solo-dev. Existing `/dist-tag repoint` + `/deprecate` covers the rare slow-fix scenario.
+- `/solo-npm:doc-sync` skill / `scripts/check-docs.ts` Node tool / Claude-in-CI E2E tests — drift-prevention infrastructure for a once-a-quarter bug class. Cost-benefit didn't pencil out for a solo-dev repo. Accept that drift is a discipline concern.
+
+### Migration
+
+No consumer-repo changes needed. New behavior is additive:
+
+- GitHub Release creation skips silently if `gh` is unavailable (existing release flow continues).
+- Bundle-size Tier 4 records first-run baselines silently; warnings start firing on the second published version per package.
+- `/status` Portfolio health section renders "(no scan yet)" hints if the cache is empty; populates after first `/audit` and `/verify --pkg-check-only` runs.
+- `/init` Phase 2 guided publish: existing behavior fully preserved via the "I'll publish manually" option.
+
 ## v0.6.1 — pkg-check enhancement: publint + tarball-content audit + .gitignore-vs-files divergence
 
 Closes the "MED priority partial" pre-publish manifest validation gap from `docs/npm-coverage.md`. The v0.6.0 `/verify` Step 5 spec was prescriptive prose that Claude read and applied manually — slow, inconsistent, didn't cover everything. v0.6.1 replaces the manual checklist with a 3-tier check backed by industry-standard tooling.

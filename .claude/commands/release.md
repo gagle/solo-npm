@@ -424,6 +424,59 @@ done
 
 Skip any packages with `"private": true` in their `package.json`.
 
+### C.7.5 Create GitHub Release with notes
+
+After registry verify confirms the package is live, create a rich GitHub Release page so anyone watching the repo gets a notification with the just-published changelog content.
+
+**Pre-flight**: check `gh auth status`. If `gh` is not installed or unauthenticated, **skip this step with a non-fatal warning**:
+
+> ⚠ `gh` not authenticated; skipping GitHub Release creation. The git tag is pushed and the npm publish succeeded, but the GitHub Release page will be empty. Run `gh auth login` and create manually with `gh release create v${NEXT_VERSION}` if desired.
+
+Then continue to C.8.
+
+If `gh` is available:
+
+```bash
+# Extract the just-prepended CHANGELOG entry as the release notes body.
+# Match from "## v<NEXT_VERSION>" up to (but not including) the next "## v" header.
+NOTES=$(awk -v v="${NEXT_VERSION}" '
+  $0 ~ "^## v" v "( |$)" { capture=1; next }
+  capture && /^## v/ { exit }
+  capture { print }
+' CHANGELOG.md)
+
+# Create the GitHub Release:
+gh release create "v${NEXT_VERSION}" \
+  --title "v${NEXT_VERSION}" \
+  --notes "${NOTES}"
+```
+
+The CHANGELOG extractor strips the version header line itself (the `gh release create --title` covers that) and stops at the next `## v...` header. If extraction returns empty (e.g., CHANGELOG format drift), fall back to passing the version-only title with no body and surface a warning.
+
+### C.7.6 Update bundle-size baseline cache
+
+After the publish succeeds, write the just-shipped version's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize` so the next `/verify` Step 5 Tier 4 has a baseline to compare against.
+
+```bash
+# Read the unpackedSize from the most recent local pack-audit (cached in state.json) or from npm view:
+SIZE=$(npm view "${PACKAGE_NAME}@${NEXT_VERSION}" dist.unpackedSize)
+
+# Write to .solo-npm/state.json#pkgCheck.lastSize:
+node -e "
+  const fs = require('fs');
+  const path = '.solo-npm/state.json';
+  const state = JSON.parse(fs.readFileSync(path, 'utf8'));
+  state.pkgCheck = state.pkgCheck || {};
+  state.pkgCheck.lastSize = state.pkgCheck.lastSize || {};
+  state.pkgCheck.lastSize['${PACKAGE_NAME}@${NEXT_VERSION}'] = ${SIZE};
+  fs.writeFileSync(path, JSON.stringify(state, null, 2) + '\n');
+"
+```
+
+For monorepos: iterate per package, write per `<pkg>@<version>` entry.
+
+This cache feeds the next /verify's Tier 4 bundle-size regression check. First-run packages have no baseline; the cache builds organically over releases.
+
 ### C.8 Final notification
 
 Print:

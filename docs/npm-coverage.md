@@ -2,6 +2,15 @@
 
 > Status: research deliverable. **v0.6.1 shipped**: pkg-check enhanced with publint + tarball audit + gitignore-vs-files divergence; `/init` Phase 1d validates manifest before claiming "complete". **v0.6.0 shipped**: `/dist-tag`, `/deprecate`, `/owner` skills landed; `/verify` extended with pkg-check Step 5; README reframed.
 
+## TL;DR (post v0.7.0)
+
+- **v0.7.0 quality-of-life polish** (no new skills, no scope expansion):
+  - `/release` / `/prerelease` / `/hotfix` auto-create rich GitHub Release pages from CHANGELOG entries (gracefully skipped if `gh` is unavailable).
+  - `/verify` Step 5 Tier 4: bundle-size regression detection (>25% growth → warning + top-5-largest breakdown).
+  - `/status`: new "Portfolio health" section reading cached audit + pkg-check counters; optional `--fresh` to force re-run.
+  - `/init` Phase 2: replaced STOP-and-resume with guided initial-publish flow (npm login handoff + AskUserQuestion gate to run `npm publish` agent-side).
+- All v0.7.0 items extend existing skills; skill count stays at 12.
+
 ## TL;DR (post v0.6.1)
 
 - solo-npm covers **all four real gaps** identified in this analysis: post-publish dist-tag mgmt (`/dist-tag`), version deprecation (`/deprecate`), owner mgmt (`/owner`), and manifest completeness validation (`/verify` Step 5: pkg-check, now backed by `publint` + `npm pack --dry-run` audit as of v0.6.1).
@@ -333,25 +342,36 @@ The Architecture section's "Two kinds of skills" subsection states the boundary:
 
 ---
 
-## 7. v0.6.0 — shipped
+## 7. Shipped roadmap
 
-All Tier 1 + Tier 2 items from the original ranking landed in v0.6.0.
+### v0.7.0 — quality-of-life polish (no new skills)
 
-### Shipped (Tier 1 + 2)
+5. ✓ **GitHub Release notes auto-generation** — `/release` Phase C.7.5, `/prerelease` Phase C.7.5, `/hotfix` Phase E.6 invoke `gh release create` with the just-prepended CHANGELOG entry as the release notes body. Pre-releases get `--prerelease`; legacy-line hotfixes get `--latest=false`.
+6. ✓ **Bundle-size Tier 4 in `/verify` Step 5** — caches `unpackedSize` per `<pkg>@<version>` in `.solo-npm/state.json#pkgCheck.lastSize`; warns on >25% growth with top-5-largest-files breakdown. First-run silent baseline; major-bump suppresses warning.
+7. ✓ **`/status` Portfolio health section** — renders cached audit + pkg-check counters; stale-cache hint; optional `--fresh` flag to re-run.
+8. ✓ **`/init` Phase 2 guided initial-publish** — replaced STOP-and-resume with `npm login` handoff + AskUserQuestion gate to run `npm publish` agent-side; chains to Phase 3 trust without re-invocation.
+
+### v0.6.1 — pkg-check enhancement
+
+- ✓ **publint integration** as Tier 1 of `/verify` Step 5. Industry-standard manifest validator.
+- ✓ **`npm pack --dry-run` audit** as Tier 3. Hard STOP on detected secrets (`.env`, `*.key`, etc.).
+- ✓ **`.gitignore` vs `files`/`exports` divergence detection** as Tier 2.
+- ✓ **`/init` Phase 1d** invokes `/verify --pkg-check-only` to validate scaffolds end-to-end.
+
+### v0.6.0 — npm operator coverage closure (Tier 1 + 2)
 
 1. ✓ **`/solo-npm:dist-tag`** — manage post-publish dist-tags (add/rm/ls/repoint/cleanup-stale). Composes with `/status` (acts on stale-@next warnings) and `/prerelease` PROMOTE (optional cleanup chain).
-
 2. ✓ **`/solo-npm:deprecate`** — mark versions deprecated (range-aware, mass + reversible). Composes with `/release` Phase G post-major and `/audit` Phase 5 (CVE response option).
-
-3. ✓ **`/verify` Step 5: pkg-check** — `package.json` + LICENSE + README completeness validation with auto-fix offers (repository.url from git remote, MIT scaffold, README stub). Severity by context (warnings standalone, errors pre-release).
-
+3. ✓ **`/verify` Step 5: pkg-check** (initial spec) — `package.json` + LICENSE + README completeness validation with auto-fix offers. Severity by context (warnings standalone, errors pre-release).
 4. ✓ **`/solo-npm:owner`** — bulk maintainer management (add/rm/ls). Bus-factor mitigation for solo-dev portfolios.
 
 ### Deferred / non-goals (codified in README)
 
 - `/solo-npm:access` flip — rare; manual `npm access set` is fine.
+- `/solo-npm:rollback` — npm doesn't unpublish; "fix and bump" is canonical recovery; existing `/dist-tag repoint` + `/deprecate` covers the rare slow-fix scenario.
+- `/solo-npm:doc-sync` and equivalent script tooling — drift-prevention infrastructure for a once-a-quarter bug; cost-benefit didn't pencil out.
 - `npm sbom` integration — niche compliance.
-- `npm unpublish`, `npm token`, `npm hook`, `npm org`, `npm pack`, `npm search`, `npm star`, `npm fund` — non-goals per the README's "Out of scope (deliberate)" section.
+- `npm unpublish`, `npm token`, `npm hook`, `npm org`, `npm pack`, `npm search`, `npm star`, `npm fund` — non-goals per the README's coverage table.
 
 ---
 

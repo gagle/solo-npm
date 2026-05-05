@@ -212,6 +212,46 @@ The second should equal `NEXT_VERSION` — confirms the publish landed on the co
 
 If target was `v<TARGET_MAJOR>` (legacy), also verify `dist-tags.latest` did NOT change (still points at the newer major's most recent stable).
 
+### E.6 Create GitHub Release with notes
+
+After registry verify, create a GitHub Release page on the `<TARGET_MAJOR>.x` branch's tag.
+
+**Critical**: when the target dist-tag is `v<TARGET_MAJOR>` (legacy line — newer stable already shipped from main), pass `--latest=false` to `gh release create` so the GitHub Releases UI does NOT mark this hotfix as the latest release. The latest release tag should stay on the current main-line stable.
+
+```bash
+# Pre-flight:
+if ! gh auth status >/dev/null 2>&1; then
+  echo "⚠ gh not authenticated; skipping GitHub Release creation."
+else
+  NOTES=$(awk -v v="${NEXT_VERSION}" '
+    $0 ~ "^## v" v "( |$)" { capture=1; next }
+    capture && /^## v/ { exit }
+    capture { print }
+  ' CHANGELOG.md)
+
+  # Determine the latest flag based on whether this is the current stable major:
+  if [ "${TARGET_DIST_TAG}" = "v${TARGET_MAJOR}" ]; then
+    # Legacy line — don't override "latest" badge on GitHub
+    LATEST_FLAG="--latest=false"
+  else
+    # Current stable major — this IS the new latest
+    LATEST_FLAG="--latest"
+  fi
+
+  gh release create "v${NEXT_VERSION}" \
+    --title "v${NEXT_VERSION}" \
+    --notes "${NOTES}" \
+    --target "${TARGET_MAJOR}.x" \
+    ${LATEST_FLAG}
+fi
+```
+
+The `--target "${TARGET_MAJOR}.x"` flag explicitly attaches the GitHub Release to the maintenance branch (not main).
+
+### E.7 Update bundle-size baseline cache
+
+Same pattern as `/release` Phase C.7.6 — write the new patch's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize`. The cache is per-package-per-version, so the maintenance line's sizes accumulate independently from main's.
+
 ## Phase F — Return to main
 
 ```bash

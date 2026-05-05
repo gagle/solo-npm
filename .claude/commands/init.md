@@ -451,7 +451,7 @@ Default commit message: `chore: bootstrap solo-npm release workflow`.
 
 If pkg-check made any auto-fix commits during 1d, the diff summary surfaces them as separate commits already (so the user sees `chore(pkg): set repository.url from git remote` etc. alongside the scaffolding commit).
 
-## Phase 2 — First-publish gate
+## Phase 2 — First-publish gate (guided in v0.7.0)
 
 Run the doctor:
 
@@ -459,36 +459,93 @@ Run the doctor:
 pnpm exec npm-trust --doctor --json --workflow release.yml
 ```
 
-If `issues[]` contains `PACKAGE_NOT_PUBLISHED`:
+If `issues[]` does NOT contain `PACKAGE_NOT_PUBLISHED`: skip the gate; proceed to Phase 3 silently.
 
-> **Stop here for first publish.**
->
-> The following packages need a manual first publish (npm requires the
-> name to exist on the registry before OIDC trust can be configured):
->
-> - <pkg-1>
-> - <pkg-2>
->
-> Steps:
->
-> 1. Authenticate: `npm login` (interactive, one-time per machine).
-> 2. Manually publish each: `npm publish --provenance=false --access public`.
->    (No tag yet; this is the deliberate "claim the name" step.)
-> 3. Re-invoke `/solo-npm:init` once published — it'll skip Phase 1
->    (idempotent) and continue to Phase 3.
+If `issues[]` contains `PACKAGE_NOT_PUBLISHED`, run the **guided initial-publish flow** (replaces the v0.6.x STOP-and-resume pattern):
 
-Then call `AskUserQuestion`:
+### 2a. Auth check + foolproof handoff
 
-- header: `"First publish"`
-- question: `"Status?"`
-- multiSelect: `false`
-- options:
-  1. `I just published — continue to Phase 3` — proceed to trust config
-  2. `Skip Phase 3 — I'll run /solo-npm:trust later` — end gracefully
-  3. `Abort` — stop the skill
+Run `npm whoami`. If exit code != 0 (not authenticated), surface foolproof handoff:
 
-If no `PACKAGE_NOT_PUBLISHED` issues, skip the gate; proceed to Phase 3
-silently.
+> The following packages need a first publish (npm requires the name to exist on the registry before OIDC trust can be configured):
+>
+> - `<pkg-1>`
+> - `<pkg-2>`
+>
+> First, authenticate with npm:
+>
+> 1. Type `npm login` and press Enter.
+> 2. It prints a URL — open it in your browser.
+> 3. Sign in to npmjs.com.
+> 4. Approve the login via your authenticator app (web 2FA).
+> 5. Return here when the terminal shows your username.
+
+Then `AskUserQuestion`:
+
+```
+Header:   "Authenticated"
+Question: "Done with `npm login`?"
+Options:
+  - Yes, continue (Recommended) — re-runs `npm whoami` to verify
+  - Abort
+```
+
+If `npm whoami` succeeds (already authenticated), skip 2a.
+
+### 2b. Per-package publish gate
+
+For each package in `PACKAGE_NOT_PUBLISHED`, surface an `AskUserQuestion`:
+
+```
+Header:   "First publish"
+Question: "Run `npm publish --provenance=false --access public` now to claim the package name `<NAME>`?"
+Options:
+  - Yes — publish now (Recommended) — agent runs the command
+  - I'll publish manually — agent stops; user re-invokes /init after
+  - Abort — end the skill
+```
+
+The question text shows the **resolved package name** so the user can sanity-check before claiming. No `--provenance` (chicken-and-egg: trust isn't configured yet, so OIDC can't sign this initial publish; provenance will be added on subsequent releases via `release.yml`'s `--provenance=true`).
+
+### 2c. Execute on Yes
+
+```bash
+cd <package-dir>
+npm publish --provenance=false --access public
+```
+
+Capture stdout + stderr. On success, surface:
+
+> ✓ Published `<NAME>@<VERSION>` to npm. Continuing to Phase 3 (trust config).
+
+On failure (e.g., name already taken by someone else, registry rejection), surface npm error verbatim and STOP:
+
+> ❌ Publish failed: `<npm error>`
+>
+> Common causes:
+>   - Package name already taken (check with `npm view <NAME>`).
+>   - Authentication expired (re-run `npm login`).
+>   - Registry rejection (rare; check npm status page).
+>
+> Fix the underlying issue, then re-invoke `/solo-npm:init`.
+
+For monorepos: iterate per package needing first publish, asking once per package. User can pick "publish now" for some and "manually" for others.
+
+### 2d. Manual path
+
+If user picks "I'll publish manually" for any package, surface the manual instructions verbatim (preserved from v0.6.x):
+
+> Manual publish steps:
+>
+> 1. `cd <package-dir>`
+> 2. `npm publish --provenance=false --access public`
+> 3. Re-invoke `/solo-npm:init` when done — it skips Phase 1 (idempotent) and continues from here.
+
+Then end the skill (no Phase 3 — trust config requires the package to exist on the registry first).
+
+### 2e. After all packages published
+
+Continue to Phase 3 trust config without requiring re-invocation. The user-in-the-loop AskUserQuestion gate at 2b is the publish-decision; once they confirm, the rest is automatic.
 
 ## Phase 3 — Configure OIDC trust
 

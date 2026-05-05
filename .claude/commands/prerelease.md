@@ -200,6 +200,43 @@ The third should equal `NEXT_VERSION` — confirms the publish landed on `@next`
 
 For monorepo: iterate per package.
 
+### C.7.5 Create GitHub Release with notes (marked pre-release)
+
+Same pattern as `/release` Phase C.7.5, with two adjustments:
+- Append `--prerelease` flag so the GitHub Release page shows the "Pre-release" badge.
+- For START operations: the CHANGELOG entry is for the pre-release line's first version (e.g., `v1.6.0-beta.0`); use that as both the tag and the title.
+- For BUMP operations: same — the per-bump CHANGELOG entry becomes the release notes body.
+- For PROMOTE operations: the aggregated stable CHANGELOG entry (covering all betas in the line) is the body. NOTE: PROMOTE results in a stable release, NOT a pre-release; do NOT append `--prerelease` for PROMOTE.
+
+```bash
+# Pre-flight (same as /release):
+if ! gh auth status >/dev/null 2>&1; then
+  echo "⚠ gh not authenticated; skipping GitHub Release creation."
+else
+  NOTES=$(awk -v v="${NEXT_VERSION}" '
+    $0 ~ "^## v" v "( |$)" { capture=1; next }
+    capture && /^## v/ { exit }
+    capture { print }
+  ' CHANGELOG.md)
+
+  # Determine the prerelease flag based on operation:
+  if [ "${OPERATION}" = "PROMOTE" ]; then
+    PRERELEASE_FLAG=""  # stable release
+  else
+    PRERELEASE_FLAG="--prerelease"
+  fi
+
+  gh release create "v${NEXT_VERSION}" \
+    --title "v${NEXT_VERSION}" \
+    --notes "${NOTES}" \
+    ${PRERELEASE_FLAG}
+fi
+```
+
+### C.7.6 Update bundle-size baseline cache
+
+Same pattern as `/release` Phase C.7.6 — write the new version's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize` keyed by `<pkg>@<version>`. Pre-release versions feed the cache like stable versions.
+
 ### C.8 Final notification
 
 ```

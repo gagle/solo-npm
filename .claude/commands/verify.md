@@ -211,6 +211,64 @@ Options:
 
 On Yes: write to `package.json#files` → commit `chore(pkg): add files allowlist for clean tarball` → re-run Tier 3 to confirm.
 
+### Tier 4 — bundle-size regression detection (NEW in v0.7.0)
+
+After Tier 3's `npm pack --dry-run` parses `unpackedSize`, compare against the previous published version's recorded size.
+
+**Cache layout** (extends `.solo-npm/state.json#pkgCheck`):
+
+```json
+{
+  "pkgCheck": {
+    "lastSize": {
+      "@scope/foo@1.5.0": 51234,
+      "@scope/foo@1.5.1": 52100,
+      "@scope/bar@0.9.0": 12888
+    },
+    "lastFullScan": "2026-05-04T11:00:00Z",
+    "ttlDays": 1
+  }
+}
+```
+
+The cache is keyed by `<pkg-name>@<version>` so size history accumulates per release. Updated by `/release` Phase C.7.6, `/prerelease` Phase C.7.6, `/hotfix` Phase E.7 after each successful publish.
+
+**Algorithm**:
+
+1. From Tier 3's pack output: read `unpackedSize` (current would-be tarball).
+2. Look up the most recent prior version's recorded size in `pkgCheck.lastSize`. (For monorepos, do this per package.) The "prior version" is the highest version `< NEXT_VERSION` (or current) recorded for this package.
+3. If no prior size cached → **first-run baseline**. Silently record nothing here (the cache update runs from /release post-publish, not from /verify pre-publish). No warning.
+4. If prior size cached → compute `delta = (current - prior) / prior * 100`.
+5. Severity:
+   - `delta > +25%` → **warning** (significant growth — investigate).
+   - `delta < -25%` → **info** (significant shrinkage — usually intentional, e.g., dropped dep).
+   - `|delta| ≤ 25%` → no surface (normal evolution).
+
+**Top-5-largest breakdown** (when warning fires):
+
+```
+⚠ Bundle-size regression on @ncbijs/eutils
+  Prior (v1.5.0):  52,100 bytes (50.9 KB unpacked)
+  Current:        128,540 bytes (125.5 KB unpacked)
+  Delta:          +146.7%
+
+  Top 5 largest files in current tarball:
+    dist/some-vendored-lib.js   72,431 bytes  (NEW vs prior — likely accidentally bundled)
+    dist/index.js               31,200 bytes
+    dist/utils.js                8,440 bytes
+    package.json                   612 bytes
+    README.md                      210 bytes
+
+  Investigate: did a dep get accidentally bundled? Did the build emit unminified output?
+  No auto-fix — size regressions need human investigation.
+```
+
+**Auto-fix**: none. Size deltas are too contextual to auto-resolve.
+
+**Special: drop the warning if the version bump is major** (e.g., 1.5.0 → 2.0.0). Major versions are expected to grow significantly; don't surface as a regression. (Heuristic: if the major part changed, suppress Tier 4. Minor/patch within the same major still trigger.)
+
+**Optional integration with `size-limit`**: if the repo has a `size-limit` config (`.size-limit.cjs`/`.size-limit.json` or `package.json#size-limit`), also run `pnpm dlx size-limit` and surface any failing budgets as Tier 4 errors (size-limit's own thresholds, not our 25% heuristic). This is opt-in via the presence of the config; we don't add the dep.
+
 ## Combined auto-fix offers
 
 | Trigger | Tier | Action |

@@ -141,6 +141,35 @@ This skill is **read-only and fast** — it does NOT call `npm-trust
 --doctor` to get live trust state. The cache is populated by `/release`
 and `/solo-npm:trust`. Status's job is to *show* state, not derive it.
 
+### Audit + pkg-check state — read from cache (NEW in v0.7.0)
+
+Read `.solo-npm/state.json#audit` and `#pkgCheck` if present. These feed the new "Portfolio health" section in Phase 3.
+
+```jsonc
+// Expected shape:
+{
+  "audit": {
+    "tier1Count": 0,
+    "tier2Count": 0,
+    "lastFullScan": "2026-05-04T11:00:00Z",
+    "ttlDays": 1
+  },
+  "pkgCheck": {
+    "errorCount": 0,
+    "warningCount": 0,
+    "lastCheck": "2026-05-04T11:00:00Z",
+    "ttlDays": 1,
+    "lastSize": { /* per-package-version size cache; not surfaced in status */ }
+  }
+}
+```
+
+For each section: compute freshness (`now - lastScan/lastCheck < ttlDays`) and pass to the Phase 3 renderer.
+
+**Optional `--fresh` flag**: if the user invokes `/solo-npm:status --fresh`, skip cache reads and instead invoke `/solo-npm:audit` + `/solo-npm:verify --pkg-check-only` to get live values. This is opt-in because it costs npm calls + runs the pack audit; default behavior stays cached + fast.
+
+This skill remains **read-only and fast** by default. Only `--fresh` triggers fresh runs.
+
 ## Phase 3 — Render
 
 ### Stale-@next warning (above table, conditional)
@@ -227,6 +256,57 @@ Per-line classification:
 Edge cases:
 - Branch exists but no matching tag → render with `(no patches yet)` instead of "last patch v<X>".
 - Multiple maintenance branches → list newest major first, descending.
+
+### Portfolio health section (NEW in v0.7.0)
+
+Render after Maintenance lines (or after Recent activity if no maintenance lines exist), before Action hints. Always renders — no conditional.
+
+Reads from `.solo-npm/state.json#audit` and `#pkgCheck` (cached values from `/audit` and `/verify --pkg-check-only` runs). Default behavior: zero npm calls; just reads JSON.
+
+**Layout**:
+
+```
+Portfolio health:
+  Audit:      Tier-1: 0  Tier-2: 0      (last scan: 2d ago)
+  Pkg-check:  errors: 0  warnings: 3    (last check: 6h ago)
+  Action:     none — all clean.
+```
+
+**Stale-cache rendering**: if a section's cache is stale (`now - lastScan > ttlDays`), substitute the values with a refresh hint:
+
+```
+Portfolio health:
+  Audit:      (stale — last scan 9d ago. Run /solo-npm:audit to refresh.)
+  Pkg-check:  errors: 0  warnings: 3    (last check: 6h ago)
+  Action:     refresh audit cache to see current security state.
+```
+
+**Missing-cache rendering**: if a section has never been populated (e.g., fresh repo, never ran /audit):
+
+```
+Portfolio health:
+  Audit:      (no scan yet — run /solo-npm:audit)
+  Pkg-check:  (no scan yet — run /solo-npm:verify --pkg-check-only)
+  Action:     run /solo-npm:audit and /solo-npm:verify --pkg-check-only to populate health cache.
+```
+
+**Action line variants**:
+
+| State | Action line |
+|---|---|
+| All clean (zero counts, fresh caches) | `none — all clean.` |
+| Tier-1 > 0 | `→ /solo-npm:audit (Tier-1 advisories require attention)` |
+| Tier-2 > 0 (no Tier-1) | `→ /solo-npm:audit (Tier-2 advisories — review when convenient)` |
+| pkg-check errors > 0 | `→ /solo-npm:verify --pkg-check-only (manifest errors block release)` |
+| pkg-check warnings only | `→ /solo-npm:verify --pkg-check-only (manifest warnings — review)` |
+| Multiple sections need attention | List each on its own line |
+
+**`--fresh` flag (opt-in)**: when invoked as `/solo-npm:status --fresh`:
+1. Phase 2 invokes `/solo-npm:audit` (which writes back to `.solo-npm/state.json#audit`).
+2. Phase 2 invokes `/solo-npm:verify --pkg-check-only` (writes back to `#pkgCheck`).
+3. Phase 3 renders fresh values.
+
+The `--fresh` mode trades zero-cost speed for accuracy. Default mode is cache-only.
 
 ### Action hints section
 
