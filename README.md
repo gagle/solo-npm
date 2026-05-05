@@ -4,6 +4,10 @@
 
 <p align="center"><b>AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, deps, owner, trust — with verify gates and provenance baked in.</b></p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Built_with-AI-7e47ff" alt="Built with AI" />
+</p>
+
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
   'primaryColor':'#cb3837',
