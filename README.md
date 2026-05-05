@@ -21,7 +21,7 @@
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
     subgraph BS["BOOTSTRAP<br/>one-time"]
         direction TB
@@ -413,7 +413,7 @@ solo-npm is the **release operator**. It deliberately does NOT cover development
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
     subgraph AS["agent-skills<br/>DEVELOPMENT"]
         spec["spec / plan"]
@@ -512,7 +512,7 @@ This distinction matters when reasoning about composition: operator skills are t
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
     subgraph CAPS["npm commands"]
         publish["publish"]
@@ -565,7 +565,7 @@ flowchart LR
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart TD
     user["User types /release"]
     wrapper["Consumer wrapper<br/>.claude/skills/release/SKILL.md<br/>(repo-specific narrative)"]
@@ -603,7 +603,7 @@ The wrapper is just a thin file with repo context (workspace shape, verify comma
   'titleColor':'#a02320',
   'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
+},'flowchart':{'defaultRenderer':'elk','padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #a02320 !important; } .edgeLabel p { color: #a02320 !important; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart TD
     start(["User: /release"]) --> phaseA["Phase A — pre-flight<br/>verify · trust cache · audit cache"]
     phaseA -->|missing trust| toTrust["auto-chain → /solo-npm:trust"]
