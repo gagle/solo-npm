@@ -8,39 +8,39 @@
 %%{init: {'theme':'base','themeVariables':{
   'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#ff6b6a',
-  'lineColor':'#ff6b6a',
+  'primaryBorderColor':'#a02320',
+  'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
   'tertiaryColor':'#7d1c1a',
-  'background':'#111114',
+  'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'#2c2a32',
-  'clusterBkg':'#18171c',
-  'clusterBorder':'#56555b',
-  'titleColor':'#ff6b6a',
-  'edgeLabelBackground':'#18171c',
+  'tertiaryBkg':'transparent',
+  'clusterBkg':'transparent',
+  'clusterBorder':'#d0d0d0',
+  'titleColor':'#a02320',
+  'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
-    subgraph BS["BOOTSTRAP — one-time"]
+    subgraph BS["BOOTSTRAP<br/>one-time"]
         direction TB
         init["/solo-npm:init"]
         trust["/solo-npm:trust"]
         init --> trust
     end
-    subgraph PR["PER RELEASE — daily"]
+    subgraph PR["PER RELEASE<br/>daily"]
         direction TB
         verify["/solo-npm:verify"]
         release["/solo-npm:release"]
         verify --> release
     end
-    subgraph LT["TRANSITIONS — rare"]
+    subgraph LT["TRANSITIONS<br/>rare"]
         direction TB
         prerelease["/solo-npm:prerelease"]
         hotfix["/solo-npm:hotfix"]
     end
-    subgraph OP["OPERATE — continuous"]
+    subgraph OP["OPERATE<br/>continuous"]
         direction TB
         status["/solo-npm:status"]
         audit["/solo-npm:audit"]
@@ -400,27 +400,27 @@ solo-npm is the **release operator**. It deliberately does NOT cover development
 %%{init: {'theme':'base','themeVariables':{
   'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#ff6b6a',
-  'lineColor':'#ff6b6a',
+  'primaryBorderColor':'#a02320',
+  'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
   'tertiaryColor':'#7d1c1a',
-  'background':'#111114',
+  'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'#2c2a32',
-  'clusterBkg':'#18171c',
-  'clusterBorder':'#56555b',
-  'titleColor':'#ff6b6a',
-  'edgeLabelBackground':'#18171c',
+  'tertiaryBkg':'transparent',
+  'clusterBkg':'transparent',
+  'clusterBorder':'#d0d0d0',
+  'titleColor':'#a02320',
+  'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
-    subgraph AS["agent-skills — DEVELOPMENT"]
+    subgraph AS["agent-skills<br/>DEVELOPMENT"]
         spec["spec / plan"]
         build["build / test"]
         review["review / debug"]
     end
-    subgraph SN["solo-npm — RELEASE + MAINTAIN"]
+    subgraph SN["solo-npm<br/>RELEASE + MAINTAIN"]
         snrel["init / trust / verify / release"]
         snlife["prerelease / hotfix"]
         snops["status / audit / deps"]
@@ -499,20 +499,20 @@ This distinction matters when reasoning about composition: operator skills are t
 %%{init: {'theme':'base','themeVariables':{
   'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#ff6b6a',
-  'lineColor':'#ff6b6a',
+  'primaryBorderColor':'#a02320',
+  'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
   'tertiaryColor':'#7d1c1a',
-  'background':'#111114',
+  'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'#2c2a32',
-  'clusterBkg':'#18171c',
-  'clusterBorder':'#56555b',
-  'titleColor':'#ff6b6a',
-  'edgeLabelBackground':'#18171c',
+  'tertiaryBkg':'transparent',
+  'clusterBkg':'transparent',
+  'clusterBorder':'#d0d0d0',
+  'titleColor':'#a02320',
+  'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart LR
     subgraph CAPS["npm commands"]
         publish["publish"]
@@ -552,20 +552,20 @@ flowchart LR
 %%{init: {'theme':'base','themeVariables':{
   'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#ff6b6a',
-  'lineColor':'#ff6b6a',
+  'primaryBorderColor':'#a02320',
+  'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
   'tertiaryColor':'#7d1c1a',
-  'background':'#111114',
+  'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'#2c2a32',
-  'clusterBkg':'#18171c',
-  'clusterBorder':'#56555b',
-  'titleColor':'#ff6b6a',
-  'edgeLabelBackground':'#18171c',
+  'tertiaryBkg':'transparent',
+  'clusterBkg':'transparent',
+  'clusterBorder':'#d0d0d0',
+  'titleColor':'#a02320',
+  'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart TD
     user["User types /release"]
     wrapper["Consumer wrapper<br/>.claude/skills/release/SKILL.md<br/>(repo-specific narrative)"]
@@ -590,20 +590,20 @@ The wrapper is just a thin file with repo context (workspace shape, verify comma
 %%{init: {'theme':'base','themeVariables':{
   'primaryColor':'#cb3837',
   'primaryTextColor':'#ffffff',
-  'primaryBorderColor':'#ff6b6a',
-  'lineColor':'#ff6b6a',
+  'primaryBorderColor':'#a02320',
+  'lineColor':'#cb3837',
   'secondaryColor':'#a02320',
   'tertiaryColor':'#7d1c1a',
-  'background':'#111114',
+  'background':'transparent',
   'mainBkg':'#cb3837',
   'secondBkg':'#a02320',
-  'tertiaryBkg':'#2c2a32',
-  'clusterBkg':'#18171c',
-  'clusterBorder':'#56555b',
-  'titleColor':'#ff6b6a',
-  'edgeLabelBackground':'#18171c',
+  'tertiaryBkg':'transparent',
+  'clusterBkg':'transparent',
+  'clusterBorder':'#d0d0d0',
+  'titleColor':'#a02320',
+  'edgeLabelBackground':'#ffffff',
   'fontFamily':'ui-monospace, monospace'
-},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}}}}%%
+},'flowchart':{'padding':30,'nodeSpacing':50,'rankSpacing':60,'subGraphTitleMargin':{'top':25,'bottom':25}},'themeCSS':'.cluster rect { rx: 8; ry: 8; fill: transparent !important; stroke: #d0d0d0 !important; stroke-width: 1.5px; } .node rect { rx: 8; ry: 8; } .edgeLabel { color: #1a1a1a; } .edgeLabel rect, .edgeLabel foreignObject > div { background-color: #ffffff !important; }'}}%%
 flowchart TD
     start(["User: /release"]) --> phaseA["Phase A — pre-flight<br/>verify · trust cache · audit cache"]
     phaseA -->|missing trust| toTrust["auto-chain → /solo-npm:trust"]
