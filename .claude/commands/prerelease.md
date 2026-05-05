@@ -51,9 +51,19 @@ If extraction is ambiguous (user said "alpha" but mentioned no base), pre-fill w
 ## Phase A — Pre-flight + state detection
 
 1. Working tree clean (`git status --porcelain`); else STOP with the standard "commit or stash first" message.
-2. Verify `release.yml` includes the dist-tag detection step (grep for `EXPLICIT_TAG=` or the three-layer logic). If missing, STOP with:
+2. Verify `release.yml` includes the dist-tag detection step (grep for `EXPLICIT_TAG=` or the three-layer logic). If missing, **auto-chain to `/solo-npm:init --refresh-yml` after a single approval gate**:
 
-   > Your `release.yml` doesn't detect dist-tag from version. Pre-releases would publish to `@latest` and clobber stable users. Run `/solo-npm:init` to refresh the workflow template (idempotent — only updates `release.yml` if it's missing the dist-tag step). Then re-run `/solo-npm:prerelease`.
+   ```
+   Header:   "Refresh release.yml"
+   Question: "Your release.yml is missing the dist-tag detection step. Without it, pre-releases would publish to @latest and clobber stable users. Refresh now?"
+   Options:
+     - Refresh release.yml and continue (Recommended) — runs /solo-npm:init --refresh-yml
+     - Abort
+   ```
+
+   On `Refresh and continue`: invoke `/solo-npm:init --refresh-yml` (it performs targeted insert + commits + pushes a single `chore: refresh release.yml for dist-tag detection` commit). Then re-enter Phase A from step 1 (working tree is clean again because the refresh started clean and made one new commit).
+
+   On `Abort`: STOP gracefully. Print: *"Aborted. Re-run `/solo-npm:prerelease` when ready."*
 
 3. Read `package.json#version` and `LATEST_TAG` (`git tag --list 'v*' --sort=-v:refname | head -1`).
 4. Detect current state — Stable shape (`^\d+\.\d+\.\d+$`) or Pre-release shape (`^\d+\.\d+\.\d+-[a-z]+\.\d+$`).
@@ -108,13 +118,40 @@ After approval, run all of the following without further user interaction. Halt 
 
 ### C.1 Apply CHANGELOG and version
 
-1. Prepend the rendered CHANGELOG entry to `CHANGELOG.md`.
-2. Update `package.json#version` to `NEXT_VERSION` via:
+1. Generate the CHANGELOG entry per operation:
+
+   - **START**: standard auto-generated entry derived from commits since `LATEST_TAG` (e.g., `v1.5.0` → `1.6.0-beta.0` covers the same commits the equivalent stable bump would have covered). Conventional-commits parse: `feat:` → Features, `fix:` → Bug Fixes, breaking changes → Breaking. Render as a `## v{NEXT_VERSION} ({DATE})` block.
+
+   - **BUMP**: minimal entry covering only commits since the *previous pre-release tag* (e.g., for `1.6.0-beta.1` → `1.6.0-beta.2`, walk `git log v1.6.0-beta.1..HEAD`). Each beta increment gets its own delta entry for engineer-facing history.
+
+   - **PROMOTE**: **aggregate** all changes since the last *stable* tag into one comprehensive entry. This covers everything that happened across `beta.0` → `beta.N` plus the promote commit itself.
+
+     ```bash
+     # Find the last stable tag (excludes pre-releases):
+     LAST_STABLE_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -vE -- '-[a-z]+\.[0-9]+$' | head -1)
+     # Walk commits since then:
+     git log "${LAST_STABLE_TAG}..HEAD" --format='%H %s'
+     ```
+
+     Conventional-commits parse the full range:
+     - `feat(scope)?: ...` → Features
+     - `fix(scope)?: ...` → Bug Fixes
+     - `BREAKING CHANGE:` in body or `feat!:` / `fix!:` → Breaking Changes
+     - `chore: release v...` → skip (release commits)
+     - `chore:`, `docs:`, `refactor:`, `test:` → skip unless marked `!` (breaking)
+
+     Render as `## v{STABLE_VERSION} ({DATE})` with sections in order: Breaking Changes, Features, Bug Fixes.
+
+     **Dedup is automatic**: each commit appears once in the range, so identical fixes that landed in beta.1 don't double-count.
+
+2. Prepend the entry to `CHANGELOG.md`. For PROMOTE specifically: the new stable entry sits **above** the existing per-beta entries (do NOT delete or condense the per-beta entries — they remain as engineer-facing historical record).
+
+3. Update `package.json#version` to `NEXT_VERSION` via:
 
    - START or PROMOTE: `npm version <NEXT_VERSION> --no-git-tag-version` (or direct edit + manifest write for monorepos with per-package versions).
    - BUMP: `npm version prerelease --no-git-tag-version`.
 
-3. (Monorepo only) Update each `packages/*/package.json#version` to `NEXT_VERSION`.
+4. (Monorepo only) Update each `packages/*/package.json#version` to `NEXT_VERSION`.
 
 ### C.2 Commit
 

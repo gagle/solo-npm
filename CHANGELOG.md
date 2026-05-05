@@ -1,5 +1,89 @@
 # Changelog
 
+## v0.5.5 — Polish iteration: auto-chain consistency, multi-channel awareness, cherry-pick automation, README rework
+
+Closes UX gaps from v0.5.4 across five themes — auto-chain consistency for stale `release.yml`, dist-tag awareness in `/status`, maintenance-lines visibility, cherry-pick automation in `/hotfix`, and changelog aggregation on PROMOTE. Plus a comprehensive README rework with visual Mermaid diagrams.
+
+### Auto-chain `/init --refresh-yml` (#3)
+
+`/solo-npm:prerelease` and `/solo-npm:hotfix` Phase A previously STOPped with a "run /solo-npm:init to refresh" message when `release.yml` lacked the dist-tag detection step. They now auto-chain after a single `AskUserQuestion` gate:
+
+- `Refresh release.yml and continue` → invoke `/solo-npm:init --refresh-yml`, which performs targeted surgery (insert the `Detect dist-tag` step before `pnpm publish`; modify the publish step to use `--tag ${{ steps.dist.outputs.tag }}`), commits as a self-contained `chore: refresh release.yml for dist-tag detection`, then re-enters the caller's Phase A.
+- `Abort` → graceful stop.
+
+`/solo-npm:init --refresh-yml` is idempotent — no-op when `release.yml` is already current. STOPs cleanly with manual-edit guidance when the workflow is too divergent for safe surgery.
+
+This restores the auto-chain pattern that v0.5.3 introduced for trust setup; pre-release and hotfix flows no longer break user momentum with manual remediation.
+
+### Pre-release / dist-tag awareness in `/status` (#5)
+
+`/solo-npm:status` now fetches `dist-tags` per package (via `npm view <pkg> --json`) and renders divergent channels:
+
+- **Active divergence** (`@next` is pre-release-shaped, differs from `@latest`): two rows per package — first for `@latest`, continuation row for `@next` with separate Drift count.
+- **Stale `@next`** (`@next` points at a version whose stable equivalent has shipped to `@latest`): single row + warning above the table suggesting `npm dist-tag rm` for registry hygiene.
+- **Single channel** (typical case): one row, no Channel suffix change needed.
+
+Action hints extended:
+- Drift on `@next` row → "→ /solo-npm:prerelease (Bump or Promote)"
+- Active `@next` with no drift → "→ /solo-npm:prerelease to bump or promote"
+
+`/solo-npm:audit` gained a one-line note when both channels are affected by an advisory.
+
+### Changelog aggregation on PROMOTE (#6)
+
+`/solo-npm:prerelease` C.1 PROMOTE branch now regenerates the stable changelog entry from `git log <last-stable-tag>..HEAD` — covering all betas in the line + the promote commit — and prepends it to `CHANGELOG.md`. Per-beta entries are preserved below the new stable entry as engineer-facing historical record.
+
+Result: end users on `@latest` get one comprehensive `1.6.0` entry describing all changes since `1.5.0`, instead of seeing only the trivial delta vs `1.6.0-beta.3`. Dedup is automatic — each commit appears once in the range.
+
+START and BUMP paths are unchanged.
+
+### Cherry-pick automation in `/hotfix` (#7)
+
+Two new sub-flows in `/solo-npm:hotfix`, sharing one conflict-handoff helper:
+
+**Backport (`--cherry-pick <sha>` flag or "backport this commit" / "cherry-pick abc1234 to v1" hints)**: Phase 0 detects the SHA. Phase D.1 runs `git cherry-pick <sha>` on the maintenance branch instead of asking for a fix description. On clean merge → `/verify` → Phase E ships the patch.
+
+**Forward-port (NEW Phase F.5)**: after Phase F's `git checkout main`, the skill gates with `AskUserQuestion`:
+- `Yes — cherry-pick and ship` → `git cherry-pick <hotfix-sha>` → chain to `/release`.
+- `Yes — cherry-pick only` → cherry-pick lands on main; user reviews and runs `/release` separately.
+- `No — skip` → final summary with manual instructions.
+
+**Conflict handoff (shared)**: when `git cherry-pick` exits non-zero, the skill surfaces conflicted files and three resolution paths (resolve manually, abort, or describe the resolution). Skill exits cleanly without auto-merging — resolution depends on intent (e.g., which side of a refactor wins), and auto-merging is more dangerous than asking.
+
+This removes the "manual `git cherry-pick` between hotfix and `/release`" friction that broke the AI-driven principle for backport/forward-port workflows.
+
+### Maintenance lines section in `/status` (#8a)
+
+`/solo-npm:status` discovers `<major>.x` branches via `git ls-remote --heads origin '*.x'` and renders a new section (only when ≥1 branch exists):
+
+```
+Maintenance lines:
+  - 1.x (last patch v1.5.2, 14d ago) — current stable major
+  - 0.x (last patch v0.9.5, 90d ago) — legacy, dist-tag @v0
+```
+
+Per-line classification compares the major to `LATEST_STABLE_MAJOR`:
+- `<major> >= LATEST_STABLE_MAJOR` → "current stable major"
+- `<major> < LATEST_STABLE_MAJOR` → "legacy, dist-tag @v<major>"
+
+Action hint added for legacy lines whose last patch is > 365 days old: *"→ Consider archiving `<major>.x` — last patch was 11mo ago"*.
+
+### README rework
+
+The root README is now organized around the AI-skills-as-npm-operator-capabilities philosophy with:
+
+- Visual Mermaid lifecycle diagram (BOOTSTRAP / PER RELEASE / LIFECYCLE TRANSITIONS / OPERATE) using a dark-purple palette.
+- Per-skill detail subsections covering purpose, steps it covers, and triggers-from natural-language prompts.
+- Visual diagrams for: agent-skills composition (DEVELOPMENT vs RELEASE+MAINTAIN boundary, with explicit composition points), release anatomy (auto-chains visualized), plugin baseline + thin wrapper pattern.
+- New "Out of scope (deliberate)" section codifying non-goals (#1, #2, #4, #8b from the v0.5.5 deferred-items analysis) with revisit-trigger criteria.
+- Diagnostic prompts table mapping symptoms to skills.
+
+LLM-agent-friendly throughout — structured tables and explicit trigger-phrase mappings.
+
+### Migration
+
+No consumer-repo changes. `/solo-npm:init --refresh-yml` is invoked on-demand from `/prerelease` or `/hotfix` Phase A only when needed; existing repos continue to work without action.
+
 ## v0.5.4 — Universal /release entry; pre-release + hotfix as 1st-class skills; agent-skills composition
 
 Major restructure of the release lifecycle. Two new skills (8th and 9th), a friction-minimisation pass on `/release`, dist-tag-aware publish for the workflow templates, and explicit composition with `addyosmani/agent-skills` for development work.

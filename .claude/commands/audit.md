@@ -178,6 +178,14 @@ Summary: 2 critical, 4 high, 8 moderate, 12 low across 23 packages.
 Action: 2 in Tier 1, 6 in Tier 2.
 ```
 
+### Pre-release awareness
+
+If `npm view <pkg> dist-tags.next` returns a version that differs from `dist-tags.latest` (i.e., a pre-release line is currently active), append below the per-tier tables:
+
+> Note: the advisories above apply to all current versions on `@latest` AND `@next`. Resolving them requires fixing the dep on whichever branch each channel publishes from (typically the same branch — main — for both, unless you maintain a separate `next` branch).
+
+One sentence; no action change. Just orientation so the user knows fixing the dep on main covers both channels.
+
 ## Phase 5 — Gate (only if Tier 1 or 2 has entries)
 
 If the report shows Tier 1 or 2 advisories, call `AskUserQuestion`:

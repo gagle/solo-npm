@@ -65,7 +65,12 @@ npm view <pkg> --json
 ```
 
 Parse: `version`, `time.modified`, `dist.attestations` (if present →
-provenance ✓).
+provenance ✓), and `dist-tags` (full map: `latest`, `next`, `v1`, `v2`, etc.).
+
+The `dist-tags` map drives the dual-channel rendering in Phase 3:
+- If only `latest` is set → single row.
+- If `next` exists and points at a version different from `latest` → potentially active divergence (render second row if the `next` version is pre-release-shaped) or stale `next` (warning above table if `next` points at a superseded version).
+- Legacy major dist-tags (`v1`, `v2`, …) → flagged in the Maintenance lines section, not the main table.
 
 ### Per-package downloads (unauthenticated, lenient)
 
@@ -96,10 +101,25 @@ cd <repo_dir>
 git log --since=7.days.ago --oneline
 git tag --list 'v*' --sort=-v:refname | head -1   # latest tag
 git rev-list <latest_tag>..HEAD --count           # unreleased commits
+
+# Most recent stable tag (excludes pre-releases) — drives Maintenance-lines classification
+git tag --list 'v*' --sort=-v:refname | grep -vE -- '-[a-z]+\.[0-9]+$' | head -1
+
+# Maintenance branches on the remote (pattern: <major>.x)
+git ls-remote --heads origin '*.x' | awk '{print $2}' | sed 's|refs/heads/||'
+
+# Per maintenance branch: latest tag on that branch + age
+for BRANCH in $(maintenance_branches); do
+  MAJOR=$(echo "$BRANCH" | sed 's/\.x$//')
+  TAG=$(git tag --list "v${MAJOR}.*" --sort=-v:refname --merged "origin/${BRANCH}" | head -1)
+  AGE=$(git log -1 --format=%cr "$TAG")
+done
 ```
 
 The "unreleased commits" count is the **drift** signal: > 0 means main
 is ahead of the latest published version.
+
+Maintenance branches feed the new "Maintenance lines" section in Phase 3 (rendered only when ≥1 maintenance branch exists).
 
 ### Trust state — read from cache, no live npm calls
 
@@ -123,29 +143,46 @@ and `/solo-npm:trust`. Status's job is to *show* state, not derive it.
 
 ## Phase 3 — Render
 
-### Main table
+### Stale-@next warning (above table, conditional)
 
-Render as a markdown table:
+If any package has `dist-tags.next` pointing at a version that's been superseded by `dist-tags.latest` (i.e., `next` is a pre-release whose stable equivalent has already shipped to `latest`), surface a one-line warning above the table:
 
 ```
-| Package          | Version  | Published    | Downloads/wk | Trust | CI  | Drift     |
-|------------------|----------|--------------|-------------:|:-----:|:---:|-----------|
-| @ncbijs/eutils   | 0.4.0    | 19d ago      |        1,213 | ✓     | ✓   | 2 commits |
-| @ncbijs/blast    | —        | (unpublished)|            — | —     | —   | ready     |
-| rfc-bcp47        | 0.13.0   | 22d ago      |          348 | ✓     | ✓   | clean     |
-| npm-trust        | 0.9.0    | today        |           87 | ✓     | ✓   | clean     |
+⚠ @next is stale on @ncbijs/eutils (points at 1.6.0-beta.3, but @latest is 1.6.0).
+   Consider: `npm dist-tag rm @ncbijs/eutils next` (registry hygiene).
+```
+
+One line per affected package. No action hint — this is informational; npm dist-tag cleanup is registry-side, outside solo-npm's scope.
+
+### Main table
+
+Render as a markdown table. Each package contributes one row per *active* dist-tag (default: just `@latest`; second row if `@next` is currently active and divergent):
+
+```
+| Package        | Channel | Version       | Published    | Downloads/wk | Trust | CI  | Drift     |
+|----------------|---------|---------------|--------------|-------------:|:-----:|:---:|-----------|
+| @ncbijs/eutils | @latest | 1.5.0         | 30d ago      |        1,213 | ✓     | ✓   | clean     |
+|                | @next   | 1.6.0-beta.3  | 2d ago       |          112 | ✓     | ✓   | 0 commits |
+| @ncbijs/blast  | —       | —             | (unpublished)|            — | —     | —   | ready     |
+| rfc-bcp47      | @latest | 0.13.0        | 22d ago      |          348 | ✓     | ✓   | clean     |
+| npm-trust      | @latest | 0.9.0         | today        |           87 | ✓     | ✓   | clean     |
 ```
 
 Columns:
-- **Package**: package name (or `name@scope`)
-- **Version**: latest on registry, or `—` for unpublished
+- **Package**: package name (or `name@scope`); blank on continuation rows
+- **Channel**: `@latest`, `@next`, or `—` for unpublished
+- **Version**: version on the channel, or `—` for unpublished
 - **Published**: relative time (`today`, `Nd ago`, `Nm ago`)
-- **Downloads/wk**: from the unauthenticated downloads API
-- **Trust**: `✓` configured; `—` unpublished; `✗` published-untrusted
+- **Downloads/wk**: from the unauthenticated downloads API (per-channel breakdown unavailable; render `—` for the `@next` continuation row OR show the package-level total on the first row only)
+- **Trust**: `✓` configured; `—` unpublished; `✗` published-untrusted (per-package, not per-channel)
 - **CI**: latest workflow run conclusion (`✓` success, `✗` failure, `~`
   in_progress, `—` no runs)
-- **Drift**: `clean`, `N commits` (unreleased), or `ready` (unpublished
-  with local content)
+- **Drift**: per-channel — `clean`, `N commits` (unreleased commits since the channel's tag), or `ready` (unpublished with local content)
+
+Render rules:
+- **Single-channel package**: one row, `@latest` channel (or `—` if unpublished).
+- **Active divergence** (`@next` exists, differs from `@latest`, AND is pre-release-shaped — i.e., `^\d+\.\d+\.\d+-[a-z]+\.\d+$`): two rows, `@latest` first, `@next` continuation row with blank Package cell.
+- **Stale @next** (`@next` exists, differs from `@latest`, but is NOT pre-release-shaped — i.e., its stable equivalent has shipped): single `@latest` row only; surface in the stale-@next warning above the table.
 
 ### Open issues section
 
@@ -170,6 +207,26 @@ Recent activity (last 7d):
   - npm-trust:    1 commit,  1 release (v0.9.0)
 ```
 
+### Maintenance lines section (conditional)
+
+Render only when ≥1 `<major>.x` branch exists on origin. Omit the section header entirely when there are none.
+
+```
+Maintenance lines:
+  - 1.x (last patch v1.5.2, 14d ago) — current stable major
+  - 0.x (last patch v0.9.5, 90d ago) — legacy, dist-tag @v0
+```
+
+Per-line classification:
+- Compute `LATEST_STABLE_MAJOR` = major of the most recent stable tag (excludes pre-releases).
+- For each `<major>.x` branch:
+  - `<major> >= LATEST_STABLE_MAJOR` → **"current stable major"** (this line is still on `@latest`, even if main is in pre-release for the next major).
+  - `<major> < LATEST_STABLE_MAJOR` → **"legacy, dist-tag @v<major>"** (a newer stable major exists; this line publishes patches to `@v<major>`).
+
+Edge cases:
+- Branch exists but no matching tag → render with `(no patches yet)` instead of "last patch v<X>".
+- Multiple maintenance branches → list newest major first, descending.
+
 ### Action hints section
 
 For each detected drift, surface an actionable hint:
@@ -184,12 +241,16 @@ Hint mapping:
 
 | Detected | Hint |
 |---|---|
-| Drift > 0 commits | "→ /release ready?" |
+| Drift > 0 commits on `@latest` row | "→ /release ready?" |
+| Drift > 0 commits on `@next` row | "→ /solo-npm:prerelease (Bump or Promote)" |
+| Active `@next` row, no drift | "→ /solo-npm:prerelease to bump or promote" |
 | Unpublished package with local content | "→ /solo-npm:init for first publish?" |
 | Unpublished package with no local tag | (no hint — not actionable) |
 | Trust ✗ (published-untrusted) | "→ /solo-npm:trust to configure OIDC" |
 | CI failure on latest run | "→ check `<gh run url>`; retry or fix" |
 | Latest publish > 90 days ago | (no hint — informational only) |
+| Legacy maintenance line, last patch > 365 days ago | "→ Consider archiving `<major>.x` — last patch was 11mo ago" (informational, no skill chain) |
+| Stale `@next` (covered by stale-@next warning above table) | (no action hint — npm registry hygiene is outside solo-npm scope) |
 
 ## Output behavior
 

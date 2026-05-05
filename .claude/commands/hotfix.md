@@ -22,22 +22,35 @@ Scan the user's invoking prompt (and recent chat turns) for hints:
 |---|---|
 | `v1`, `v1.5`, `1.x`, `the previous major`, `v1 line` | `TARGET_MAJOR` |
 | Any descriptive phrase about the bug or component (`rate limiter`, `crashes on 429`, `parsing bug`, `auth header missing`) | `FIX_DESCRIPTION` to the user's verbatim phrasing |
+| `--cherry-pick <sha>` flag, *"backport this commit"*, *"port commit abc123"*, *"cherry-pick abc1234 to v1"* | `CHERRY_PICK_SHA` (resolve from prompt or recent chat context); skip both `FIX_DESCRIPTION` prompt **and** the "describe the fix" message in Phase D |
 
 Examples:
 - *"Hotfix the v1 rate limiter — it crashes on 429"* → `TARGET_MAJOR=1`, `FIX_DESCRIPTION="rate limiter crashes on 429"`. Skip "Which major?" question; skip "describe the fix" prompt.
 - *"Patch v1.5"* → `TARGET_MAJOR=1`. Still ask for fix description.
 - *"Backport this fix to v1"* (where "this fix" refers to a recent fix on main) → `TARGET_MAJOR=1`, extract `FIX_DESCRIPTION` from recent chat context. Skip both prompts.
 - *"v1 users are reporting a parsing bug"* → `TARGET_MAJOR=1`, `FIX_DESCRIPTION="parsing bug reported by users"`. Skip both.
-- Bare *"hotfix"* → ask both questions.
+- *"Cherry-pick abc1234 to v1"* → `TARGET_MAJOR=1`, `CHERRY_PICK_SHA="abc1234"`. Backport mode (Phase D applies via `git cherry-pick` instead of agent code edits).
+- *"--cherry-pick abc1234"* (explicit flag) → `CHERRY_PICK_SHA="abc1234"`. Same backport mode; `TARGET_MAJOR` still resolved via Phase A if not pre-filled.
+- Bare *"hotfix"* → ask both questions; cherry-pick mode off.
 
 If extraction is ambiguous, pre-fill what's clear and ask the rest. Don't over-extract.
 
 ## Phase A — Pre-flight + state detection
 
 1. Working tree clean (`git status --porcelain`); else STOP with the standard "commit or stash first" message.
-2. Verify `release.yml` honours `publishConfig.tag` (grep for `EXPLICIT_TAG=` in the workflow). If missing, STOP with:
+2. Verify `release.yml` honours `publishConfig.tag` (grep for `EXPLICIT_TAG=` in the workflow). If missing, **auto-chain to `/solo-npm:init --refresh-yml` after a single approval gate**:
 
-   > Your `release.yml` doesn't honour `publishConfig.tag`. A hotfix to a legacy major would publish to `@latest` and clobber stable users. Run `/solo-npm:init` to refresh the workflow template.
+   ```
+   Header:   "Refresh release.yml"
+   Question: "Your release.yml doesn't honour publishConfig.tag. A hotfix to a legacy major would publish to @latest and clobber stable users. Refresh now?"
+   Options:
+     - Refresh release.yml and continue (Recommended) — runs /solo-npm:init --refresh-yml
+     - Abort
+   ```
+
+   On `Refresh and continue`: invoke `/solo-npm:init --refresh-yml` (it performs targeted insert + commits + pushes a single `chore: refresh release.yml for dist-tag detection` commit). Then re-enter Phase A from step 1.
+
+   On `Abort`: STOP gracefully. Print: *"Aborted. Re-run `/solo-npm:hotfix` when ready."*
 
 3. List published majors from `git tag --list 'v*' --sort=-v:refname | head -20`. Group by major number. Identify candidate maintenance lines:
    - `currentMain` = LATEST_TAG's major number
@@ -93,9 +106,26 @@ LATEST_STABLE_MAJOR=$(echo "$LATEST_STABLE" | sed -E 's/^v([0-9]+).*/\1/')
 
 Surface the target dist-tag to the user as part of Phase D's plan (so they understand where the patch will land).
 
-## Phase D — Apply fix (composes with agent-skills)
+## Phase D — Apply fix
 
-This phase does *user code work* — not release infrastructure. solo-npm delegates to `agent-skills:debugging-and-error-recovery` when available.
+Two sub-paths: **cherry-pick mode** (when `CHERRY_PICK_SHA` was extracted in Phase 0) or **describe-the-fix mode** (everything else).
+
+### D.1 Cherry-pick mode (`CHERRY_PICK_SHA` set)
+
+The fix already exists as a commit on another branch (typically main). Apply it via `git cherry-pick`:
+
+```bash
+git cherry-pick <CHERRY_PICK_SHA>
+```
+
+- On success → continue to `/verify`, then Phase E.
+- On conflict → invoke the [Cherry-pick conflict handoff](#cherry-pick-conflict-handoff) helper. The skill exits cleanly; the user resolves manually and continues with `/release` separately.
+
+This path skips agent-skills delegation entirely — there's no fix to author, only one to apply.
+
+### D.2 Describe-the-fix mode (default)
+
+This path does *user code work* — not release infrastructure. solo-npm delegates to `agent-skills:debugging-and-error-recovery` when available.
 
 If Phase 0's prompt-context extraction already captured `FIX_DESCRIPTION`, proceed directly. Otherwise surface this verbatim:
 
@@ -112,10 +142,12 @@ When the fix description is in hand:
 2. **If installed**: invoke `/agent-skills:debugging-and-error-recovery` with the fix description as context. That skill brings reproduce → localise → reduce → fix → guard methodology, suited to a backward-maintenance bug fix where the v1 codebase may differ from main's. After it returns, run `/verify`.
 3. **If not installed**: the agent applies the fix directly using its general code-editing tools (Edit, Write, Bash) per the `FIX_DESCRIPTION`. This is the fallback — solo-npm works standalone. Recommended setup is solo-npm + agent-skills together (see README "Scope and partners").
 
-After the fix lands, run `/verify` (composes with the verify skill, scoped to whatever subset the fix touched).
+### After D.1 or D.2
+
+Run `/verify` (composes with the verify skill, scoped to whatever subset the fix touched).
 
 If verify fails:
-- If agent-skills was used in Phase D, the debugging-and-error-recovery skill will surface diagnostic context. Allow user to direct next step.
+- If agent-skills was used in D.2, the debugging-and-error-recovery skill will surface diagnostic context. Allow user to direct next step.
 - Otherwise, surface the failure and let user direct iteration.
 
 ## Phase E — Release
@@ -158,6 +190,7 @@ After approval:
 ```bash
 git add CHANGELOG.md package.json
 git commit -m "chore: release v${NEXT_VERSION}"
+HOTFIX_SHA=$(git rev-parse HEAD)   # captured for Phase F.5 forward-port
 git push origin "${TARGET_MAJOR}.x"
 
 git tag "v${NEXT_VERSION}"
@@ -165,6 +198,8 @@ git push --tags
 
 gh run watch --exit-status
 ```
+
+`HOTFIX_SHA` holds the release commit on `<TARGET_MAJOR>.x` — used by Phase F.5 if the user opts to forward-port to main.
 
 ### E.5 Verify on registry
 
@@ -183,40 +218,98 @@ If target was `v<TARGET_MAJOR>` (legacy), also verify `dist-tags.latest` did NOT
 git checkout main
 ```
 
-Print final summary:
+## Phase F.5 — Forward-port to main (gated)
+
+Skipped automatically when Phase D was cherry-pick mode (`CHERRY_PICK_SHA` was set) — the fix already came *from* main, no forward-port needed.
+
+Otherwise, surface the option:
+
+```
+Header:   "Forward-port"
+Question: "Forward-port the v<NEXT_VERSION> fix to main?"
+Options:
+  - Yes — cherry-pick and ship as next release on main (Recommended if main has the same bug)
+  - Yes — cherry-pick only, no release (I'll review first)
+  - No — skip (I'll handle manually if needed)
+```
+
+`HOTFIX_SHA` is the commit sha of the hotfix's release commit on the `<TARGET_MAJOR>.x` branch (captured in Phase E.4 before `git checkout main`).
+
+### Yes — cherry-pick and ship
+
+```bash
+git cherry-pick <HOTFIX_SHA>
+```
+
+- On success → chain to `/release` (which auto-detects state and routes correctly: stable patch / pre-release bump / promote / etc.).
+- On conflict → invoke [Cherry-pick conflict handoff](#cherry-pick-conflict-handoff). Skill exits; user resolves manually.
+
+### Yes — cherry-pick only
+
+```bash
+git cherry-pick <HOTFIX_SHA>
+```
+
+- On success → commit lands on main; the user reviews and runs `/release` separately on their own time.
+- On conflict → conflict handoff (same as above).
+
+### No — skip
+
+Print final summary with footer:
+
+> To forward-port later: `git checkout main && git cherry-pick <HOTFIX_SHA>` then `/release`.
+
+## Phase G — Final summary
+
+After Phase F.5 (whatever its outcome):
 
 ```
 Hotfix v<NEXT_VERSION> published to dist-tag `<latest|v<major>>`.
   Branch:       <TARGET_MAJOR>.x  (preserved on origin for future hotfixes)
   Tarball:      https://www.npmjs.com/package/<PACKAGE_NAME>/v/<NEXT_VERSION>
   CI:           <gh run url>
+Forward-port:   <released as v<X> on main | cherry-picked, ready for /release | skipped | conflict — manual resolution required>
 You're back on main.
 ```
+
+## Cherry-pick conflict handoff
+
+Shared helper used by Phase D's cherry-pick mode and Phase F.5's forward-port. When `git cherry-pick` exits non-zero:
+
+1. Read `git status --porcelain` to identify conflicted files.
+2. Surface to the user verbatim:
+
+   ```
+   Cherry-pick conflict on these files:
+     - <file-1> (both modified)
+     - <file-2> (deleted by us, modified by them)
+
+   The cherry-pick is paused (`.git/CHERRY_PICK_HEAD` exists).
+
+   Options:
+     - Resolve manually: edit the file(s), `git add`, then `git cherry-pick --continue`
+     - Abort: `git cherry-pick --abort` (skip this port)
+     - Or describe how the conflict should be resolved and I'll re-attempt
+   ```
+
+3. Exit the skill (or the cherry-pick step) cleanly. Do **not** auto-resolve. Do **not** auto-abort.
+4. The final summary still prints, with a footer noting the unresolved cherry-pick state.
+
+The user owns conflict resolution because the right resolution depends on intent (e.g., which side of a refactor wins) — auto-merging here is more dangerous than asking.
 
 ## Subsequent hotfixes on the same line
 
 The `<major>.x` branch persists on origin. Future invocations of `/solo-npm:hotfix` for the same major:
 - Phase B short path: branch exists, `git checkout` + `git pull --ff-only`.
-- Phase 0 extraction works the same — user describes the new bug.
-- Phase D applies the fix.
+- Phase 0 extraction works the same — user describes the new bug (or supplies `--cherry-pick <sha>` for backport).
+- Phase D applies the fix (D.1 cherry-pick or D.2 describe-the-fix).
 - Phase E publishes the next patch (e.g., `v1.5.2`).
 
-Once the line is established, hotfixes are just "describe the next bug, agent ships."
-
-## Forward-porting fixes to main
-
-This skill does NOT auto-port the fix back to main. After a hotfix ships, the fix exists on `<TARGET_MAJOR>.x` but main may still have the bug (or its v2-rewrite equivalent).
-
-Options:
-
-- **If the fix applies cleanly to main's code**: `git checkout main && git cherry-pick <hotfix-commit-sha>`. Then `/release` to ship the next patch.
-- **If main has a different API**: manually re-apply the fix with main's API, then `/release`.
-
-Auto-porting is out of scope for v0.5.4.
+Once the line is established, hotfixes are just "describe the next bug (or cherry-pick a sha), agent ships."
 
 ## What this skill does NOT do
 
-- Cherry-pick or merge the hotfix back to main (manual; see above).
+- Auto-resolve cherry-pick conflicts — the user owns conflict resolution because intent matters.
 - Maintain multiple `<major>.x` lines in one invocation (call again per major).
-- Auto-detect "this fix should go to main too" — the user decides.
-- Drive the actual code-editing methodology — that's `agent-skills:debugging-and-error-recovery` when installed; general agent tools as fallback.
+- Auto-detect "this fix should go to main too" without asking — Phase F.5 always gates with an `AskUserQuestion`.
+- Drive the actual code-editing methodology in describe-the-fix mode — that's `agent-skills:debugging-and-error-recovery` when installed; general agent tools as fallback.

@@ -1,5 +1,5 @@
 ---
-description: Bootstrap a fresh repo for tag-triggered npm publishing with OIDC + provenance — scaffold release.yml + publishConfig + .nvmrc + consumer wrappers + .claude/settings.json, gate on first manual publish, then chain into /solo-npm:trust. Idempotent.
+description: Bootstrap a fresh repo for tag-triggered npm publishing with OIDC + provenance — scaffold release.yml + publishConfig + .nvmrc + consumer wrappers + .claude/settings.json, gate on first manual publish, then chain into /solo-npm:trust. Idempotent. Also supports `--refresh-yml` mode for surgical updates to an existing release.yml (used by /solo-npm:prerelease and /solo-npm:hotfix when they detect drift).
 ---
 
 # Init
@@ -18,14 +18,17 @@ then `/release` (your project's wrapper) just works.
 
 ## How it works
 
-Four phases. Idempotent — never overwrites existing artifacts. Safe to
-run multiple times.
+Two modes:
+
+**Default mode** — full bootstrap. Four phases. Idempotent — never overwrites existing artifacts. Safe to run multiple times.
 
 - **Phase 1** — detect state, render plan, ONE `AskUserQuestion`,
   generate scaffolds + consumer wrappers + settings.json.
 - **Phase 2** — gate on first publish via `npm-trust --doctor`.
 - **Phase 3** — chain into `/solo-npm:trust` for OIDC config.
 - **Phase 4** — final summary + next-steps.
+
+**Refresh mode** (`--refresh-yml`) — surgical updates to existing `release.yml` without re-running the full plan. Used by `/solo-npm:prerelease` and `/solo-npm:hotfix` Phase A when they detect a stale workflow that lacks the dist-tag detection step. Idempotent — no-op if `release.yml` is already current. See [Refresh-only mode](#refresh-only-mode---refresh-yml) below.
 
 ## Phase 1 — Scaffold
 
@@ -494,6 +497,83 @@ Init complete.
 
 Next: /release   (your project's wrapper around /solo-npm:release)
 ```
+
+## Refresh-only mode (`--refresh-yml`)
+
+Triggered by:
+
+- Explicit invocation: `/solo-npm:init --refresh-yml`
+- Auto-chained from `/solo-npm:prerelease` Phase A or `/solo-npm:hotfix` Phase A when those skills detect that `release.yml` is missing the dist-tag detection step.
+
+**Scope**: only edits `.github/workflows/release.yml`. Skips Phases 1c (everything else), 2, 3, 4. No package.json changes, no wrappers, no trust chain, no first-publish gate. Single-purpose: bring `release.yml` up to the current template's dist-tag awareness.
+
+### Algorithm
+
+1. **Pre-flight**: working tree clean (`git status --porcelain`); if dirty, STOP with the standard "commit or stash first" message. (Pre-flight runs in this mode too because the refresh produces its own commit.)
+
+2. **Read** `.github/workflows/release.yml`. If missing, STOP with: *"No release.yml found. Run `/solo-npm:init` (full bootstrap) first."*
+
+3. **Detect drift**:
+   - Grep for `EXPLICIT_TAG=` → dist-tag detection step present?
+   - Grep for `--tag ${{ steps.dist.outputs.tag }}` → publish step uses the computed tag?
+   - If both present → no-op. Print *"release.yml is up to date — dist-tag detection step already present."* and exit (no commit).
+
+4. **Locate insertion point**: find the `pnpm publish` (or `npm publish`) step in the YAML. The dist-tag detection step must be inserted as the immediately-preceding step in the same job.
+
+5. **Detect divergence**: if any of the following, the workflow is too customized for safe surgery — STOP with the manual-edit message (see step 7):
+   - More than one publish step in the workflow
+   - The publish step has additional commands chained (e.g., `pnpm publish && ...`)
+   - The publish step is inside a custom script block
+   - YAML structure is unparseable
+
+6. **Surgical insert**:
+   - Insert the `Detect dist-tag` step (verbatim from the template the workflow most closely matches — public OIDC if `id-token: write` is present, private token otherwise) immediately before the publish step.
+   - Modify the publish step's `run:` line to append `--tag ${{ steps.dist.outputs.tag }}` (idempotent — only append if not already present).
+   - Preserve all other content (formatting, comments, custom env vars, additional steps before/after).
+
+7. **STOP message** (when surgery isn't safe):
+
+   ```
+   release.yml looks customized — manual edit needed.
+
+   The dist-tag detection step belongs immediately before your publish step.
+   Copy this snippet from the canonical template:
+
+       - name: Detect dist-tag
+         id: dist
+         run: |
+           VERSION=$(node -p "require('./package.json').version")
+           EXPLICIT_TAG=$(node -p "require('./package.json').publishConfig?.tag || ''")
+           if [ -n "$EXPLICIT_TAG" ]; then
+             echo "tag=$EXPLICIT_TAG" >> "$GITHUB_OUTPUT"
+           elif [[ "$VERSION" =~ -[a-z]+\.[0-9]+$ ]]; then
+             echo "tag=next" >> "$GITHUB_OUTPUT"
+           else
+             echo "tag=latest" >> "$GITHUB_OUTPUT"
+           fi
+
+   And modify your publish step to append: --tag ${{ steps.dist.outputs.tag }}
+
+   Then re-run /solo-npm:prerelease (or /solo-npm:hotfix) to continue.
+   ```
+
+8. **Commit**:
+
+   ```bash
+   git add .github/workflows/release.yml
+   git commit -m "chore: refresh release.yml for dist-tag detection"
+   git push
+   ```
+
+   The commit is self-contained and descriptive — separate from any release commit so `git log` clearly shows the workflow evolution.
+
+9. **Return**: print a one-line success summary and exit. The caller skill (/prerelease or /hotfix) re-enters its own Phase A to continue.
+
+### Auto-chain behavior
+
+When `/solo-npm:prerelease` or `/solo-npm:hotfix` invokes this mode via auto-chain, the user has already approved the refresh via an `AskUserQuestion` gate in the caller skill. This mode does NOT re-prompt — it just executes.
+
+When invoked directly (`/solo-npm:init --refresh-yml`), this mode also does NOT prompt — it's a focused operation; the user invoking it explicitly has already decided.
 
 ## Idempotency contract
 
