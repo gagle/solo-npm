@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.8.0 — polish iteration on the road to v1.0.0
+
+Cleanup pass before the v1.0.0 stability declaration. No new skills, no behavioral expansion. All breaking-the-cycle work that prevents future drift.
+
+### De-hardcoded skill counts
+
+User-facing copy no longer carries a count of skills:
+
+- README headings: "The twelve commands at a glance" → **"Commands at a glance"**; "The twelve commands — detail" → **"Commands — detail"**.
+- README ToC anchors updated correspondingly (`#commands-at-a-glance`, `#commands--detail`).
+- README inline copy: *"Claude orchestrates the 12 skills end-to-end"* → *"Claude orchestrates the skills end-to-end"*.
+- README image alt text + lifecycle SVG copy: *"12 AI skills"* → *"AI skills wrap every npm command"*.
+- README install copy: *"All nine `/solo-npm:*` commands resolve"* (pre-v0.6.0 leftover) → *"All `/solo-npm:*` commands resolve"*.
+- CONTRIBUTING.md: *"the seven `/solo-npm:*` invocations"* (pre-v0.5.0 leftover) → *"the `/solo-npm:*` invocations"*.
+- `docs/npm-coverage.md`: *"For each of the 12 skills"* → *"For each skill"*; *"10 of the 12 skills"* → *"most skills"*.
+
+CONTRIBUTING.md gains a new convention rule: *"De-hardcode counts in user-facing copy. Use list-form descriptions instead of count-form."*
+
+### Doc drift fixes
+
+- `docs/prompts.md` "Day 1: brand-new package" scenario refreshed to v0.7.0 guided initial-publish flow (was describing v0.6.x stop-and-resume pattern).
+
+### `/release` PACKAGE_NOT_PUBLISHED auto-chain
+
+Phase A.3 previously had `PACKAGE_NOT_PUBLISHED` as a hard STOP forcing the user to run `npm publish` manually then re-invoke `/release`. With v0.7.0's guided `/init` Phase 2 publish, this becomes an **auto-chain offer**: AskUserQuestion gate offers chaining into `/solo-npm:init` (which routes through Phase 2 guided publish + Phase 3 trust + Phase 4 done). After init returns, /release re-runs Phase A.3 with everything in place.
+
+This closes the last cold-path STOP in the auto-chain composition graph. Every detected gap now has a remediation chain, not a manual instruction.
+
+### Phase naming convention codified
+
+CONTRIBUTING.md gains an explicit convention rule:
+
+> Skills with strict-sequential phases use **numbers** (`Phase 1`, `Phase 2`, …) or **steps** (`Step 1`, …). Skills with branching or named-phase patterns use **letters with `Phase 0` reserved for prompt-context reading** (`Phase 0`, `Phase A`, `Phase B`, …, with sub-phases like `F.5` allowed). Both conventions are valid; choose based on whether the skill has branching or sub-phases. Don't mix within a single skill.
+
+The convention reflects the as-shipped pattern (numbers in /init, /verify, /audit, /deps, /status; letters in /release, /prerelease, /hotfix, /dist-tag, /deprecate, /owner; /trust uses pre-flight + Phase 1/2). Documenting now so future skills follow consistently.
+
+### Cache `lastSize` retention policy
+
+The bundle-size cache (`.solo-npm/state.json#pkgCheck.lastSize`) was unbounded — every published version added an entry forever. v0.8.0 adds a **retention policy**: keep at most the **last 3 versions per package** (semver-sorted descending). Older entries are pruned when new ones land. Tier 4 only needs the most-recent prior version for delta computation; 3 is sufficient depth.
+
+The trim runs in `/release` Phase C.7.6, `/prerelease` Phase C.7.6, and `/hotfix` Phase E.7 cache-update steps.
+
+### `/deps` Phase 5 push gate consistency
+
+`AskUserQuestion` options now mark "Push now" as Recommended (was unmarked). Aligns with the AI-driven principle: agent does the operation; user gates. Power users keep "Keep local" and "Open in $EDITOR first" as escape hatches.
+
+### Migration
+
+No consumer-repo changes. All v0.8.0 changes are either user-facing copy fixes (no behavioral impact), the PACKAGE_NOT_PUBLISHED auto-chain (additive — replaces a STOP with an offer), or internal conventions documented for future contributors.
+
 ## v0.7.0 — quality-of-life polish (no new skills, no scope expansion)
 
 Five enhancements across existing skills + one doc fix. Skill count stays at 12; no new tooling, no CI scripts, no new dependencies. Pure value-add to existing workflows.

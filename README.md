@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <img src="./resources/lifecycle.svg" alt="solo-npm lifecycle: YOU type a prompt → solo-npm 12 AI skills wrap every npm command → DONE signed, verified, on npm" width="900">
+  <img src="./resources/lifecycle.svg" alt="solo-npm lifecycle: YOU type a prompt → solo-npm AI skills wrap every npm command → DONE signed, verified, on npm" width="900">
 </p>
 
 > ### 🤖 Built to be driven by Claude
 >
-> **Open Claude Code in your repo, say *"Integrate solo-npm and follow the Quick Start"*, and from then on every release, audit, hotfix, and dep upgrade is one prompt away.** No manual `npm version`, no manual `git tag`, no manual changelog — Claude orchestrates the 12 skills end-to-end.
+> **Open Claude Code in your repo, say *"Integrate solo-npm and follow the Quick Start"*, and from then on every release, audit, hotfix, and dep upgrade is one prompt away.** No manual `npm version`, no manual `git tag`, no manual changelog — Claude orchestrates the skills end-to-end.
 >
 > **For solo devs**, this means:
 > - **Daily release**: type *"ship it"* — Claude runs `/verify`, bumps the version from your commits, tags, watches CI, and verifies the registry attestation.
@@ -29,11 +29,11 @@
 ## Table of contents
 
 - [Why solo-npm?](#why-solo-npm)
-- [The twelve commands at a glance](#the-twelve-commands-at-a-glance)
+- [Commands at a glance](#commands-at-a-glance)
 - [npm coverage](#npm-coverage)
 - [Tell Claude](#tell-claude)
 - [Quick Start](#quick-start)
-- [The twelve commands — detail](#the-twelve-commands--detail)
+- [Commands — detail](#commands--detail)
 - [Composition with `agent-skills`](#composition-with-agent-skills)
 - [Architecture](#architecture)
 - [Diagnostic prompts (symptom → skill)](#diagnostic-prompts-symptom--skill)
@@ -56,7 +56,7 @@ Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) rep
 
 ---
 
-## The twelve commands at a glance
+## Commands at a glance
 
 | Phase | Command | One-line purpose |
 |---|---|---|
@@ -151,7 +151,7 @@ When you open the repo in Claude Code, accept:
 - *Install marketplace `gllamas-skills`?* → Yes
 - *Install plugin `solo-npm@gllamas-skills`?* → Yes
 
-All nine `/solo-npm:*` commands resolve.
+All `/solo-npm:*` commands resolve.
 
 ### 3. Bootstrap
 
@@ -170,7 +170,7 @@ Phase 1 scaffolds release.yml + package.json updates + .nvmrc + thin wrappers. P
 
 ---
 
-## The twelve commands — detail
+## Commands — detail
 
 Every command's `description` field is tuned so Claude routes natural-language prompts to the right skill. The "Triggers from" rows below are real prompts users (or agents) might type — they're matched against the skill descriptions.
 

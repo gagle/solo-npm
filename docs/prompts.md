@@ -165,15 +165,22 @@ You:  Integrate solo-npm into this repo.
        (agent reads README, writes settings.json, prompts install)
 You:  [accept install prompts]
 You:  Now bootstrap.
-       (agent runs /solo-npm:init → scaffolds workflow + wrappers + cache →
-        Phase 2 detects PACKAGE_NOT_PUBLISHED → tells you to publish manually first)
-You:  I just ran `npm publish --provenance=false --access public` — continue.
-       (agent re-invokes init → Phase 2 passes → Phase 3 chains into /solo-npm:trust)
+       (agent runs /solo-npm:init → Phase 1 scaffolds release.yml + publishConfig +
+        wrappers + cache → Phase 1d invokes /verify --pkg-check-only to validate the
+        manifest end-to-end → Phase 2 detects PACKAGE_NOT_PUBLISHED →
+        npm whoami check + foolproof npm login handoff if needed →
+        AskUserQuestion: "Run npm publish --provenance=false --access public now to
+        claim the package name `<NAME>`?")
+You:  [pick "Yes — publish now"]
+       (agent runs npm publish agent-side → publish succeeds →
+        Phase 3 chains into /solo-npm:trust without re-invocation)
 You:  [accept "Configure trust for 1 package?" prompt; do the npm web 2FA]
        (agent: trust complete; cache populated; init Phase 4 reports done)
 You:  Now ship the first real release.
        (agent runs /release → Phase A passes → B.1 "First release: 0.1.0/1.0.0?" → user picks)
 ```
+
+*(The "I'll publish manually" path is preserved for users who prefer to run npm publish themselves; the agent then waits for re-invocation.)*
 
 ### Routine release day
 

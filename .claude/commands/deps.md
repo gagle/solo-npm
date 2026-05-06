@@ -334,12 +334,12 @@ After all batches are applied (or aborted), call `AskUserQuestion`:
 - header: `"Push commits"`
 - question: `"<N> commits ready. Push to origin?"`
 - options:
-  1. `Push now` — git push
-  2. `Just keep them local` — user pushes manually later
-  3. `Open them in $EDITOR first` — `git rebase -i HEAD~<N>` for
+  1. `Push now` (Recommended) — git push
+  2. `Keep local` — user pushes manually later
+  3. `Open in $EDITOR first` — `git rebase -i HEAD~<N>` for
      review (then user types "continue")
 
-Default: don't push. Let the user push when ready.
+The "Push now" recommendation matches the AI-driven principle (agent does the operation; user gates). Power users with custom commit-amend workflows can pick option 2 or 3.
 
 ## Phase 6 — Done summary
 

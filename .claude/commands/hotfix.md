@@ -250,7 +250,7 @@ The `--target "${TARGET_MAJOR}.x"` flag explicitly attaches the GitHub Release t
 
 ### E.7 Update bundle-size baseline cache
 
-Same pattern as `/release` Phase C.7.6 — write the new patch's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize`. The cache is per-package-per-version, so the maintenance line's sizes accumulate independently from main's.
+Same pattern as `/release` Phase C.7.6 — write the new patch's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize`, then trim to keep at most the **last 3 versions per package** (semver-sorted descending). The cache is per-package-per-version, so the maintenance line's sizes accumulate alongside main's; the per-package trim treats them as a single version stream and keeps the 3 highest-semver entries regardless of branch.
 
 ## Phase F — Return to main
 

@@ -111,7 +111,7 @@ Grouped by functional category. ★ marks operations that a solo-dev publisher r
 
 ## 2. Inventory — what solo-npm covers today
 
-For each of the 12 skills, the npm CLI commands and registry features it actually orchestrates:
+For each skill, the npm CLI commands and registry features it actually orchestrates:
 
 | solo-npm skill | npm CLI commands invoked | npm registry features touched | Lifecycle phase |
 |---|---|---|---|
@@ -128,7 +128,7 @@ For each of the 12 skills, the npm CLI commands and registry features it actuall
 | `/solo-npm:deprecate` | `npm deprecate`; `npm view versions`/`@<v> deprecated` | Per-version deprecation messages; mass + reversible | Operate |
 | `/solo-npm:owner` | `npm owner add/rm/ls`; `npm whoami` | Maintainer mgmt across packages | Operate |
 
-**Observation**: 10 of the 12 skills directly orchestrate npm CLI commands. `/verify` is mostly local quality gates but Tier 1+3 of pkg-check do invoke `publint` and `npm pack --dry-run`. `/init` is partially npm (publishConfig) + partially GitHub Actions infrastructure (release.yml).
+**Observation**: most skills directly orchestrate npm CLI commands. `/verify` is mostly local quality gates but Tier 1+3 of pkg-check do invoke `publint` and `npm pack --dry-run`. `/init` is partially npm (publishConfig) + partially GitHub Actions infrastructure (release.yml).
 
 ---
 
@@ -305,7 +305,7 @@ The current opener swaps "npm operator capability" for "npm command" in user-fac
 
 ### 6.2 README "npm coverage" table ✓ shipped
 
-The README has had this section since v0.6.0 (between "The twelve commands at a glance" and "Tell Claude"). It maps each npm command to its skill (or non-goal). Current state of the table column header is **"npm command"** (was "npm operator capability" in v0.6.0).
+The README has had this section since v0.6.0 (between "Commands at a glance" and "Tell Claude"). It maps each npm command to its skill (or non-goal). Current state of the table column header is **"npm command"** (was "npm operator capability" in v0.6.0).
 
 The original proposal table is preserved below for historical reference; the live README table is canonical:
 

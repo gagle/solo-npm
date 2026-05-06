@@ -235,7 +235,7 @@ fi
 
 ### C.7.6 Update bundle-size baseline cache
 
-Same pattern as `/release` Phase C.7.6 — write the new version's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize` keyed by `<pkg>@<version>`. Pre-release versions feed the cache like stable versions.
+Same pattern as `/release` Phase C.7.6 — write the new version's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize` keyed by `<pkg>@<version>`, then trim to keep at most the **last 3 versions per package** (semver-sorted descending). Pre-release versions feed the cache like stable versions; the trim treats them uniformly.
 
 ### C.8 Final notification
 

@@ -159,13 +159,18 @@ invocation paths.**
 | `WORKFLOWS_NONE` | Auto-invoke `/solo-npm:init` to scaffold `release.yml`. After init completes, re-run A.3 (now with workflows in place). |
 | Any package with `trustConfigured == false` AND `provenancePresent == false` | Auto-invoke `/solo-npm:trust`. After trust completes, re-run A.3. |
 
+**Auto-chain with one approval gate:**
+
+| Detected | Action |
+|---|---|
+| `PACKAGE_NOT_PUBLISHED` for any package | First publish must happen before tag-triggered release flow can run. AskUserQuestion: *"`<N>` package(s) need a first publish before `/release` can run. Bootstrap them now via `/solo-npm:init` (which has a guided publish flow)?"* — Options: `Yes — chain to /solo-npm:init` (Recommended) / `Abort`. On Yes: chain into `/solo-npm:init` (which routes through Phase 2 guided publish, then Phase 3 trust, then Phase 4 done). After init returns, re-run /release Phase A.3. |
+
 **Hard stops (no auto-fix possible; surface to user and end):**
 
 | Detected | Action |
 |---|---|
 | `summary.fail > 0` (any other failure) | STOP. Surface the failing issue verbatim. |
 | `WORKSPACE_NOT_DETECTED`, `REPO_NO_REMOTE` | STOP. The user must fix the repo structure. |
-| `PACKAGE_NOT_PUBLISHED` for any package | STOP. First publish must be manual: surface the package list and instruct the user — `npm publish --provenance=false --access public` once per package, then re-run `/release`. |
 | `REGISTRY_PROVENANCE_CONFLICT` | STOP. Surface the remedy: either remove `provenance: true` from `publishConfig` or change `registry` back to public npm. |
 
 **Informational (continue silently):**
@@ -457,25 +462,38 @@ The CHANGELOG extractor strips the version header line itself (the `gh release c
 
 After the publish succeeds, write the just-shipped version's `unpackedSize` to `.solo-npm/state.json#pkgCheck.lastSize` so the next `/verify` Step 5 Tier 4 has a baseline to compare against.
 
+**Retention policy**: keep at most the **last 3 versions per package** (sorted by semver descending). Older entries are pruned as new ones land — the cache stays bounded over years of releases. Tier 4 only needs the most-recent prior version for delta computation, so 3 is sufficient depth.
+
 ```bash
 # Read the unpackedSize from the most recent local pack-audit (cached in state.json) or from npm view:
 SIZE=$(npm view "${PACKAGE_NAME}@${NEXT_VERSION}" dist.unpackedSize)
 
-# Write to .solo-npm/state.json#pkgCheck.lastSize:
+# Write to .solo-npm/state.json#pkgCheck.lastSize, then trim to last 3 versions per package:
 node -e "
   const fs = require('fs');
+  const semver = (a, b) => {
+    const aP = a.split('.').map(Number);
+    const bP = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) if (aP[i] !== bP[i]) return bP[i] - aP[i];
+    return 0;
+  };
   const path = '.solo-npm/state.json';
   const state = JSON.parse(fs.readFileSync(path, 'utf8'));
   state.pkgCheck = state.pkgCheck || {};
   state.pkgCheck.lastSize = state.pkgCheck.lastSize || {};
   state.pkgCheck.lastSize['${PACKAGE_NAME}@${NEXT_VERSION}'] = ${SIZE};
+  // Trim: keep last 3 versions per package
+  const sameNameKeys = Object.keys(state.pkgCheck.lastSize)
+    .filter(k => k.startsWith('${PACKAGE_NAME}@'))
+    .sort((a, b) => semver(a.split('@').pop().split('-')[0], b.split('@').pop().split('-')[0]));
+  for (const stale of sameNameKeys.slice(3)) delete state.pkgCheck.lastSize[stale];
   fs.writeFileSync(path, JSON.stringify(state, null, 2) + '\n');
 "
 ```
 
-For monorepos: iterate per package, write per `<pkg>@<version>` entry.
+For monorepos: iterate per package, write per `<pkg>@<version>` entry, trim per package.
 
-This cache feeds the next /verify's Tier 4 bundle-size regression check. First-run packages have no baseline; the cache builds organically over releases.
+This cache feeds the next /verify's Tier 4 bundle-size regression check. First-run packages have no baseline; the cache builds organically over releases. The 3-version cap keeps `state.json` bounded.
 
 ### C.8 Final notification
 

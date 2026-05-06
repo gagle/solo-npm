@@ -47,6 +47,8 @@ every time.
   manifests are validated against the Claude Code marketplace spec.
 - **AI-only contribution model**: PRs disabled at the GitHub level.
 - **Visual assets are SVG only**: the README's hero banner (`resources/banner.svg`) and lifecycle diagram (`resources/lifecycle.svg`) are hand-written SVGs. No Mermaid blocks anywhere. Edit the SVG source directly; GitHub renders it via `<img>` tag. Camo cache busts on content-hash change.
+- **Phase naming convention**: skills with strict-sequential phases use **numbers** (`Phase 1`, `Phase 2`, …) or **steps** (`Step 1`, …). Skills with branching or named-phase patterns use **letters with `Phase 0` reserved for prompt-context reading** (`Phase 0`, `Phase A`, `Phase B`, …, with sub-phases like `F.5` allowed). Both conventions are valid; choose based on whether the skill has branching or sub-phases. Don't mix within a single skill.
+- **De-hardcode counts**: avoid hardcoding the number of skills in user-facing copy (README, banner, plugin/marketplace descriptions). Use list-form descriptions ("publish, version, dist-tag, …") instead of count-form ("twelve skills"). Self-correcting copy is cheaper than count-tracking copy.
 
 ## Dogfooding
 
@@ -89,7 +91,7 @@ into a throwaway repo's `.claude/settings.json` and trust the folder:
 ```
 
 Claude Code will prompt to install the marketplace + plugin; accept
-both. After `/reload-plugins`, the seven `/solo-npm:*` invocations
+both. After `/reload-plugins`, the `/solo-npm:*` invocations
 resolve.
 
 ## Adding a new command
