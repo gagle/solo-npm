@@ -51,6 +51,17 @@ Two modes:
 | `.claude/skills/release/`, `.claude/skills/verify/` | presence | Wrapper templates: skip if exist |
 | `.claude/settings.json` | extraKnownMarketplaces, enabledPlugins | Merge if exists |
 | `.solo-npm/state.json` | trust-state cache | Create if missing (empty cache) |
+| `which gh` (PATH lookup) | binary present + version | Plan summary recommendation |
+| `gh auth status` (if `gh` present) | authenticated state | Plan summary auth state |
+
+**Tooling check** — `gh` (GitHub CLI) is **optional but recommended**. solo-npm uses `gh` for:
+- GitHub Release auto-creation in `/release`, `/prerelease`, `/hotfix` (CHANGELOG entry as release notes body)
+- `/status` portfolio enrichment (open issues, CI run results)
+- `gh run watch` for CI tracking
+
+If `which gh` returns nothing → record `gh: not installed` in the plan summary. If `gh` is installed but `gh auth status` fails → record `gh: installed, not authenticated`. Otherwise → record `gh: ready`.
+
+These are surfaced in Phase 1b's plan; the user can install `gh` from [cli.github.com](https://cli.github.com) (the canonical install page covers macOS, Linux, Windows, and other platforms) before proceeding, OR continue without it (skills gracefully skip the gh-dependent steps).
 
 ### 1b. Render plan + ONE `AskUserQuestion`
 

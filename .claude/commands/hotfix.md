@@ -219,9 +219,11 @@ After registry verify, create a GitHub Release page on the `<TARGET_MAJOR>.x` br
 **Critical**: when the target dist-tag is `v<TARGET_MAJOR>` (legacy line — newer stable already shipped from main), pass `--latest=false` to `gh release create` so the GitHub Releases UI does NOT mark this hotfix as the latest release. The latest release tag should stay on the current main-line stable.
 
 ```bash
-# Pre-flight:
-if ! gh auth status >/dev/null 2>&1; then
-  echo "⚠ gh not authenticated; skipping GitHub Release creation."
+# Pre-flight (same pattern as /release C.7.5 — distinguish not-installed vs not-authenticated):
+if ! command -v gh >/dev/null 2>&1; then
+  echo "⚠ gh not installed; skipping GitHub Release creation. Install from https://cli.github.com"
+elif ! gh auth status >/dev/null 2>&1; then
+  echo "⚠ gh installed but not authenticated; skipping. Run: gh auth login"
 else
   NOTES=$(awk -v v="${NEXT_VERSION}" '
     $0 ~ "^## v" v "( |$)" { capture=1; next }

@@ -170,6 +170,47 @@ For each section: compute freshness (`now - lastScan/lastCheck < ttlDays`) and p
 
 This skill remains **read-only and fast** by default. Only `--fresh` triggers fresh runs.
 
+### deps.dev signals — fetch + cache (NEW in v0.9.0)
+
+For each package, fetch security + posture metadata from Google's [deps.dev API](https://docs.deps.dev/api/v3/) (free, no authentication required). The API aggregates npm registry data with OSV.dev advisories and OpenSSF Scorecard ingestion.
+
+```bash
+# Per-package fetch — JSON over HTTP:
+curl -s "https://api.deps.dev/v3/systems/npm/packages/<pkg-name>"
+```
+
+Parse:
+- `defaultVersion` → most recent published version
+- `versions[].publishedAt` → publish timestamps
+- `versions[].advisoryKeys[]` → OSV vulnerability IDs
+- `versions[].licenses[]` → license SPDX identifiers
+- `scorecard` (when present) → OpenSSF Scorecard score `[0-10]` and check breakdown
+
+**Caching**: write to `.solo-npm/state.json#depsdev`:
+
+```jsonc
+{
+  "depsdev": {
+    "lastFullScan": "2026-05-06T11:00:00Z",
+    "ttlDays": 1,
+    "perPackage": {
+      "@ncbijs/eutils": {
+        "scorecardScore": 7.8,
+        "advisoryCount": 0,
+        "license": "MIT",
+        "lastFetched": "2026-05-06T11:00:00Z"
+      }
+    }
+  }
+}
+```
+
+TTL: 1 day. The deps.dev data updates lazily; daily refresh is sufficient.
+
+**Failure handling**: deps.dev is a free public API. If it's unreachable (network down, API rate-limit hit, or service deprecation), surface `depsdev: (unavailable)` in the Phase 3 render and continue with the rest of /status. **Do not block the dashboard on deps.dev availability.**
+
+**Skip if `--fresh` is NOT passed and cache is fresh**: read from `.solo-npm/state.json#depsdev.perPackage` instead of refetching. Same hot-path optimization as audit + pkg-check.
+
 ## Phase 3 — Render
 
 ### Stale-@next warning (above table, conditional)
@@ -307,6 +348,47 @@ Portfolio health:
 3. Phase 3 renders fresh values.
 
 The `--fresh` mode trades zero-cost speed for accuracy. Default mode is cache-only.
+
+### Security signals section (NEW in v0.9.0)
+
+Render after Portfolio health, before Action hints. Renders only when deps.dev cache is populated for at least one package; otherwise omitted entirely.
+
+Pulls from `.solo-npm/state.json#depsdev.perPackage` — per-package OSV advisory counts, OpenSSF Scorecard score (0–10), license SPDX identifier.
+
+**Layout**:
+
+```
+Security signals (deps.dev):
+  Package           Score   Advisories   License
+  @ncbijs/eutils    7.8     0            MIT
+  @ncbijs/blast     7.8     0            MIT
+  rfc-bcp47         8.4     0            Apache-2.0
+  npm-trust         6.2     1            MIT
+
+  Source: api.deps.dev (last fetched: 2h ago).
+```
+
+**Score interpretation** (OpenSSF Scorecard):
+- 8–10: strong security posture (signed releases, branch protection, vuln-reporting policy, dependency-update automation, etc.)
+- 5–7: typical for solo-dev OSS (some checks fail because they assume team workflows like code review)
+- 0–4: posture concerns; investigate
+
+**Advisory count**: distinct OSV advisory IDs affecting the most-recent published version. Cross-references with /audit's tier counts (which are derived differently — npm/pnpm audit output, not OSV directly).
+
+**Stale cache rendering**: if `now - lastFullScan > ttlDays`, append a stale hint:
+```
+  (cache stale — last fetched 4d ago. Run /solo-npm:status --fresh to refresh.)
+```
+
+**Unavailable rendering**: if deps.dev was unreachable on the last fetch attempt (cache-flagged as unreachable), substitute the table with:
+```
+Security signals (deps.dev):
+  (deps.dev unavailable — couldn't fetch security signals. Try again later or /solo-npm:status --fresh.)
+```
+
+This section gives a quick read on package posture without invoking `/audit` (which is heavier — runs pnpm audit). Complementary signal: `/audit` runs your local audit workflow; deps.dev gives the OSV.dev community's view.
+
+**Action hint integration**: if any package has Scorecard score < 5 OR advisory count > 0, the hint section below picks up the package and suggests `/solo-npm:audit` for a deeper look.
 
 ### Action hints section
 

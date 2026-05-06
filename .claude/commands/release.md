@@ -433,11 +433,31 @@ Skip any packages with `"private": true` in their `package.json`.
 
 After registry verify confirms the package is live, create a rich GitHub Release page so anyone watching the repo gets a notification with the just-published changelog content.
 
-**Pre-flight**: check `gh auth status`. If `gh` is not installed or unauthenticated, **skip this step with a non-fatal warning**:
+**Pre-flight**: distinguish "not installed" from "not authenticated":
 
-> ⚠ `gh` not authenticated; skipping GitHub Release creation. The git tag is pushed and the npm publish succeeded, but the GitHub Release page will be empty. Run `gh auth login` and create manually with `gh release create v${NEXT_VERSION}` if desired.
+```bash
+if ! command -v gh >/dev/null 2>&1; then
+  GH_STATE="not_installed"
+elif ! gh auth status >/dev/null 2>&1; then
+  GH_STATE="not_authenticated"
+else
+  GH_STATE="ready"
+fi
+```
 
-Then continue to C.8.
+If `not_installed` → **skip with**:
+
+> ⚠ `gh` not installed; skipping GitHub Release creation. The git tag is pushed and the npm publish succeeded, but the GitHub Release page will be empty.
+> Install from https://cli.github.com (covers macOS / Linux / Windows / other platforms).
+> After install + `gh auth login`, manually create with `gh release create v${NEXT_VERSION}` if desired.
+
+If `not_authenticated` → **skip with**:
+
+> ⚠ `gh` installed but not authenticated; skipping GitHub Release creation. Run `gh auth login` then `gh release create v${NEXT_VERSION}` to create manually.
+
+Either skip is **non-fatal** — release flow continues to C.8 normally.
+
+If `ready` → proceed:
 
 If `gh` is available:
 

@@ -1,5 +1,65 @@
 # Changelog
 
+## v0.9.0 — stability roadmap + deps.dev integration + gh detection + audit clarification
+
+Continuing the path toward v1.0.0 (not declaring stability yet — v0.x experimental). Adds documentation for the stability commitments v1.0.0 will codify, plus a manual regression-scenario walkthrough as drift insurance, plus deps.dev integration in `/status` for security signals.
+
+### `docs/stability.md` — forward-looking roadmap
+
+New doc describing what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor `v0.X.0` may break consumer wrappers (we try not to, but we reserve the right). The doc codifies:
+
+- Stable-in-v1.0.0 surface: skill names, skill identity, AskUserQuestion options, auto-chain destinations, `state.json` schema sections, scaffold artifact set
+- Free-to-evolve in v1.x: spec wording, new phases/options/auto-chains/cache-sections, internal phase organization, pinned tool minor versions
+- v2.0.0-only changes: skill renames/removals, AskUserQuestion option removals, auto-chain removals, `state.json` schema breaks
+- Pre-v1.0.0 punch list (most landed; a few open items remain)
+- Open questions (trigger-phrase set stability, wrapper template stability, agent-skills composition contract, deps.dev API stability)
+
+### `docs/regression.md` — manual scenario walkthrough
+
+12 representative scenarios covering: daily release, pre-release lifecycle (start/bump/promote with cleanup chain), hotfix with forward-port, CVE response with deprecate, botched-release recovery, first-publish bootstrap, bundle-size regression, stale-@next warning, secrets-in-tarball HARD STOP, gh-unavailable graceful skip, cross-machine cache resume.
+
+Each scenario has: setup state, trigger prompt, expected agent behavior, and verification commands. Run before each release as drift insurance — catches behavioral changes between Claude versions or skill-spec edits without requiring a full integration-test framework.
+
+### deps.dev integration in `/status`
+
+`/status` Phase 2 now fetches per-package security + posture metadata from Google's [deps.dev API](https://docs.deps.dev/api/v3/) (free, no auth required). Caches in `.solo-npm/state.json#depsdev` with 1-day TTL. Phase 3 renders a new "Security signals" section showing OpenSSF Scorecard score (0–10), advisory count, and license per package.
+
+Graceful skip if deps.dev is unreachable — surfaces *"deps.dev unavailable"* and continues with the rest of the dashboard. Stale-cache and missing-cache renderings have their own hints.
+
+This enriches the morning-check signal: at-a-glance security posture without invoking `/audit` (which is heavier — runs `pnpm audit`). Complementary signal, not a replacement.
+
+### `gh` detection at `/init` time
+
+`/init` Phase 1a now detects whether `gh` (GitHub CLI) is installed (via `which gh`) and authenticated (via `gh auth status`). The plan summary in Phase 1b surfaces one of three states:
+
+- `gh: ready` (installed + authenticated)
+- `gh: installed, not authenticated` (run `gh auth login`)
+- `gh: not installed` (install from https://cli.github.com — covers macOS / Linux / Windows / other platforms)
+
+The user can install before proceeding, or continue without — skills using `gh` (`/release`, `/prerelease`, `/hotfix`, `/status`) gracefully skip their gh-dependent steps.
+
+Per-skill gh checks now distinguish "not installed" vs "not authenticated" with different remediation messages (was conflated as a single "not authenticated" check). Cross-platform install pointers use https://cli.github.com (canonical install page) instead of platform-specific commands.
+
+### `/audit` Phase 5 — "Fix Tier 1" wording clarification
+
+The `Fix Tier 1 now` option was ambiguous — could be read as "auto-bump my package version". Added an explicit "What 'Fix Tier 1' actually does" section to `audit.md` clarifying:
+
+1. /audit identifies the affected dep + fix-available version (e.g., `tar-fs@2.1.2 → 2.1.3`).
+2. /deps bumps the **dependency** (not your own package's version).
+3. /verify gates: pass → commit `chore(deps): upgrade ...`; fail → rollback.
+4. To ship the fix, run `/release` next (which patch-bumps your own package).
+
+The "auto" in "auto-fix" is gated by `/verify`. If your tests fail with the new dep, the upgrade rolls back; nothing ships broken.
+
+### Migration
+
+No consumer-repo changes. All v0.9.0 changes are additive:
+
+- New docs (`stability.md`, `regression.md`) — pure additions, no behavioral impact.
+- deps.dev integration in `/status` — gracefully skips if API unreachable; existing /status behavior preserved.
+- `gh` detection — was implicitly happening per-skill via `gh auth status`; now explicit at `/init` time. No behavioral change for users who already have `gh` installed.
+- /audit Tier-1 clarification — pure documentation, no behavior change.
+
 ## v0.8.0 — polish iteration on the road to v1.0.0
 
 Cleanup pass before the v1.0.0 stability declaration. No new skills, no behavioral expansion. All breaking-the-cycle work that prevents future drift.

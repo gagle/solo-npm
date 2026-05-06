@@ -209,6 +209,22 @@ If the report shows Tier 1 or 2 advisories, call `AskUserQuestion`:
 If Tier 1 + 2 are empty, skip the gate; the audit is complete after
 Phase 4.
 
+### What "Fix Tier 1" actually does
+
+Important clarification — "fix" here means **bumping the affected dependency** to a version that resolves the advisory, not bumping your own package's version. Concretely:
+
+1. /audit identifies the affected package + the fix-available version (e.g., `tar-fs@2.1.2` is vulnerable; `tar-fs@2.1.3` is fixed).
+2. User picks "Fix Tier 1 now" → chains to `/solo-npm:deps cve-tier-1`.
+3. /deps reads the advisory data, classifies the upgrade as `CVE-driven` tier (highest priority).
+4. /deps snapshots the working tree, then runs `pnpm update tar-fs@2.1.3` (or npm/yarn equivalent).
+5. /deps invokes `/solo-npm:verify` (lint + typecheck + test + build + pkg-check).
+6. **On verify pass**: commits `chore(deps): upgrade tar-fs to 2.1.3 (GHSA-xxxx)`. The dep is upgraded; your own package's version stays unchanged at this point.
+7. **On verify fail**: rolls back via `git checkout package.json pnpm-lock.yaml`; offers debugging via `agent-skills` if installed, or AskUserQuestion (skip dep / skip batch / fix manually / abort).
+
+To **ship the fix to your consumers**, run `/release` next — it patch-bumps your own package's version (e.g., `1.5.0 → 1.5.1`), commits, tags, and CI publishes with the upgraded dep included in the new tarball.
+
+The "auto" in "auto-fix" is gated by `/verify`. If your tests fail with the new dep, the upgrade rolls back; nothing ships broken.
+
 ### Composition with `/solo-npm:deprecate`
 
 When the user picks "Deprecate affected versions", compute the version

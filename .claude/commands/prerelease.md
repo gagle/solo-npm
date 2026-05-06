@@ -209,9 +209,11 @@ Same pattern as `/release` Phase C.7.5, with two adjustments:
 - For PROMOTE operations: the aggregated stable CHANGELOG entry (covering all betas in the line) is the body. NOTE: PROMOTE results in a stable release, NOT a pre-release; do NOT append `--prerelease` for PROMOTE.
 
 ```bash
-# Pre-flight (same as /release):
-if ! gh auth status >/dev/null 2>&1; then
-  echo "⚠ gh not authenticated; skipping GitHub Release creation."
+# Pre-flight (same as /release C.7.5 — distinguish not-installed vs not-authenticated):
+if ! command -v gh >/dev/null 2>&1; then
+  echo "⚠ gh not installed; skipping GitHub Release creation. Install from https://cli.github.com"
+elif ! gh auth status >/dev/null 2>&1; then
+  echo "⚠ gh installed but not authenticated; skipping. Run: gh auth login"
 else
   NOTES=$(awk -v v="${NEXT_VERSION}" '
     $0 ~ "^## v" v "( |$)" { capture=1; next }
