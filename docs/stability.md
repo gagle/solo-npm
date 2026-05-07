@@ -61,46 +61,17 @@ These are explicit non-promises so consumers don't accidentally depend on them:
 
 ## What needs to land before v1.0.0
 
-The pre-v1.0.0 punch list (status as of v0.12.0):
+**Code-level entry criteria: complete** as of v0.12.0. The hardening pass landed across v0.6.0 → v0.12.0; see [`CHANGELOG.md`](../CHANGELOG.md) for per-version detail.
 
-| Item | Status | Where |
-|---|---|---|
-| De-hardcode skill counts in user-facing copy | ✓ shipped v0.8.0 | README, CONTRIBUTING, lifecycle.svg, npm-coverage.md |
-| Fix the 3 doc drift items found in audit | ✓ shipped v0.8.0 | README line 154, CONTRIBUTING line 92, prompts.md "Day 1" scenario |
-| `/release` PACKAGE_NOT_PUBLISHED auto-chain to `/init` | ✓ shipped v0.8.0 | release.md Phase A.3 |
-| Phase naming convention codified | ✓ shipped v0.8.0 | CONTRIBUTING.md |
-| Cache `lastSize` retention policy | ✓ shipped v0.8.0 | release.md C.7.6, prerelease.md C.7.6, hotfix.md E.7 |
-| Clarify `/audit` "Fix Tier 1" wording | ✓ shipped v0.9.0 | audit.md Phase 5 |
-| `docs/stability.md` (this doc) | ✓ shipped v0.9.0 | docs/stability.md |
-| `docs/regression.md` (manual scenario walkthrough) | ✓ shipped v0.9.0 | docs/regression.md |
-| `deps.dev` integration in `/status` | ✓ shipped v0.9.0 | status.md Phase 2 + Phase 3 |
-| **Wrong-name + rename-after-publish recovery** (`/unpublish`) | ✓ shipped v0.10.0 | unpublish.md (skill #13) |
-| **Cross-skill systemic error-handling hardening** (H1 OTP, H2 cache corruption, H3 auth-window race, H4 registry propagation, H5 concurrent locking, H6 chain-target failure) | ✓ shipped v0.10.0 | All 12 skills; canonical patterns in unpublish.md Phases C.0–D.2; references in 11 sibling skills |
-| **Auto-cleanup gate for git tags + GitHub Releases** post-unpublish | ✓ shipped v0.10.0 | unpublish.md Phase D.3 |
-| **`/verify` post-publish secrets remediation note** | ✓ shipped v0.10.0 | verify.md Tier 3 |
-| **Tier-1 strict-safety hardening** (H7 universal pattern; tag-collision pre-flight; git-push categorization; curl timeouts; stale-lock auto-cleanup; atomic state.json writes; stderr redirect) | ✓ shipped v0.10.1 | Canonical in unpublish.md Phase −1; surgical fixes in release/prerelease/hotfix |
-| **Tier-2 strict-safety hardening — Section A** (universal Phase A: detached HEAD detection, worktree detection, gh pre-flight) | ✓ shipped v0.11.0 | Canonical in unpublish.md Phases −1.5/−1.6/−1.7 |
-| **Tier-2 strict-safety hardening — Section B** (gh-run-watch timeout, stash-pop conflict recovery, pre-commit hook rollback, fetch-shallow detection, gh-release-create warn-not-block, npm-pack defensive parsing) | ✓ shipped v0.11.0 | Surgical fixes in release/prerelease/hotfix/deps/verify |
-| **Tier-2 strict-safety hardening — Section C** (concrete H3 in deprecate/dist-tag/owner; H4 retry in audit; H5 lock in release/hotfix/prerelease; H6 chain-failure in audit/status/init) | ✓ shipped v0.11.0 | All affected skills |
-| **Tier-2 strict-safety hardening — Section D** (state.json schema preservation; npm view defensive parsing; npm-trust npx pin; npm pack defensive parsing) | ✓ shipped v0.11.0 | Canonical extends in unpublish.md Phase −1.4; D3 in trust.md |
-| **Tier-2 strict-safety hardening — Section E** (semver/identifier/scope regex validation in Phase 0.5) | ✓ shipped v0.11.0 | Canonical in unpublish.md Phase 0.5; reference in 5 sibling skills |
-| **Tier-3 stability — A** (rate-limit backoff helper H8) | ✓ shipped v0.12.0 | unpublish.md Phase −1.9; ref in /status, /deprecate, /dist-tag, /owner |
-| **Tier-3 stability — B** (SSL/TLS error remediation) | ✓ shipped v0.12.0 | unpublish.md Phase −1.10; applied at git push + curl + npm boundaries |
-| **Tier-3 stability — C** (SIGINT signal handling) | ✓ shipped v0.12.0 | unpublish.md Phase −1.11; state-aware cleanup |
-| **Tier-3 stability — D** (env-var validation: $HOME/$TMPDIR) | ✓ shipped v0.12.0 | unpublish.md Phase −1.3b |
-| **Tier-3 stability — E** (.npmrc ad-hoc parsing → `npm config get` API) | ✓ shipped v0.12.0 | init.md Phase 1c |
-| **Tier-3 stability — F** (conventional-commits strictness with did-you-mean) | ✓ shipped v0.12.0 | release.md Phase B.3 |
-| **Tier-3 stability — G** (npm CLI BCL extensions: dist-tags, whoami, audit schema) | ✓ shipped v0.12.0 | unpublish.md Phase −1.4b |
-| **Tier-3 stability — H** (workspace symlink edges: empty glob, mixed private+public) | ✓ shipped v0.12.0 | init.md Phase 1a |
-| **Tier-3 stability — I** (gh GraphQL fan-in for >20-pkg portfolios) | ✓ shipped v0.12.0 | status.md Phase 2 |
-| **Tier-3 adjacent — J** (CRLF / core.autocrlf detection) | ✓ shipped v0.12.0 | unpublish.md Phase −1.5b |
-| **Tier-3 adjacent — K** (git log truncation cap at 500) | ✓ shipped v0.12.0 | release.md Phase B.3 |
-| **Tier-3 adjacent — L** (pre-push hook failure rollback) | ✓ shipped v0.12.0 | release.md C.3 (canonical) + ref in prerelease/hotfix/deps |
-| **Demo / showcase repo** (`solo-npm-example`) | open | not yet started |
-| **Wider adoption signal** — at least one external user beyond rfc-bcp47/ncbijs | open | depends on outreach |
-| **Skill-spec drift caught at least once via the regression checklist** before being noticed in production | open | requires release cycles |
+What remains is **external/temporal** — these validate the API in the wild rather than adding code:
 
-The first 30 items are landed (v0.12.0 closed all 12 Tier-3 items in a single release). **The code-level pre-v1.0.0 entry criteria are now complete.** The remaining 3 are external/temporal — they need real-world usage to validate that the API holds up. **v1.0.0 won't ship until those are met.**
+| Item | Why it's still open |
+|---|---|
+| Demo / showcase repo (`solo-npm-example`) | Not yet started. The maintainer's own portfolio (rfc-bcp47, ncbijs, npm-trust) currently serves as dogfood. |
+| Wider adoption signal — at least one external user beyond the maintainer's portfolio | Depends on outreach. v1.0.0 won't declare stability without external validation. |
+| Skill-spec drift caught once via the regression checklist before being noticed in production | Requires release cycles. |
+
+**v1.0.0 ships when those three are met.** Internal patterns (phase numbering, AskUserQuestion option text, etc.) may keep iterating within v0.x even though the structural commitments above are already shaped to be v1.0.0-stable.
 
 ### Post-v1.0.0 polish (finalized non-goals)
 
@@ -114,19 +85,6 @@ After v0.12.0, the following remain explicit non-goals — not stability concern
 - **Submodule state mismatch detection** — niche; submodules are uncommon in solo-dev npm workflows
 - **Tool version shadowing in PATH** (multiple installations of git/gh/npm) — H7's version reporting surfaces what we got; choosing the user's preferred is their environment concern
 - **CRLF as STOP rather than WARN** — current v0.12.0 surfaces a warning; elevating to STOP would block real-world Windows users with `core.autocrlf=true` repos that aren't actually broken
-
-### v0.10.0 hardening summary
-
-The cross-skill systemic hardening pass landed in v0.10.0 closes most of what would have been the "v1.0.0 entry criteria" backlog. Pattern reference implementations live in `/solo-npm:unpublish` (Phases C.0–D.2) and are referenced from each affected sibling skill's Phase C.0 (or top-level "Error-handling patterns" subsection). The six patterns:
-
-- **H1 — OTP / 2FA-on-writes detection** in `npm publish/unpublish/deprecate/dist-tag/owner` stderr; manual handoff with `--otp=<code>` form so the skill never hangs awaiting stdin.
-- **H2 — `.solo-npm/state.json` corruption guard**: try/catch every read, treat parse-fail as empty cache with a non-fatal warning.
-- **H3 — Auth-window race**: re-check `npm whoami` immediately before each destructive call after long AskUserQuestion gates.
-- **H4 — Registry propagation lag retry**: 3 attempts × 5s sleep on post-mutation `npm view`; non-fatal note (not HARD STOP) if still inconsistent.
-- **H5 — Concurrent invocation lock**: per-package file lock at `.solo-npm/locks/<sanitized-pkg>.lock`; refuse to start if held; PID file with trap cleanup.
-- **H6 — Chain-target failure recovery**: capture child STOP messages and surface in parent context with retry/abort options; never silently swallow.
-
-The patterns are documented in v0.10.0's CHANGELOG with the full per-skill patch matrix.
 
 ## Versioning policy in v0.x
 
