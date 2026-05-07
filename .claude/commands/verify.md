@@ -194,6 +194,15 @@ Fix BEFORE releasing:
 This is a HARD STOP. /release will not proceed.
 ```
 
+##### Post-publish: secrets already shipped in a prior release
+
+If `/verify` ran post-fact (e.g., on an existing repo) and the secrets pattern is already in a published tarball, both halves of the fix matter — but they're not equivalent:
+
+1. **Rotate the leaked credentials immediately.** This is the load-bearing fix. The secrets were already cached by mirrors, indexed by archives, and possibly installed by consumers; assume them compromised.
+2. **Then, if the affected version is within npm's 72h unpublish window, run `/solo-npm:unpublish`** (or `npm unpublish <pkg>@<version>`) to remove the artifact. Outside the 72h window, `/solo-npm:unpublish` will refuse — fall back to `/solo-npm:deprecate` and rely on rotation.
+
+Unpublish without rotation is **not sufficient**: any consumer who already installed the version still has the secrets in their `node_modules`.
+
 Auto-fix is NOT offered for secrets — the user must do `git rm --cached` themselves and rotate the credentials manually. Auto-removing the file from the tarball without git+rotation steps would leave secrets in `git log` history, which is worse than a published tarball.
 
 #### Auto-fix offer: suggest `files` allowlist

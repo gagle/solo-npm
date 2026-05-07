@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.10.0 — `/solo-npm:unpublish` + cross-skill systemic hardening + auto-cleanup
+
+Big stability-grade release. Adds skill #13 (`/solo-npm:unpublish`) for the rare-but-real wrong-name and rename-after-publish cases, with strict safety gates. Also lands a cross-skill systemic hardening pass (38 patches across 11 sibling skills) for six error-handling patterns surfaced by a comprehensive ~257-error-path audit, plus an auto-cleanup gate for git tags + GitHub Releases after unpublish.
+
+### `/solo-npm:unpublish` — skill #13
+
+Three operations, two-gate destructive confirmation, **defaults to recommending deprecate** in every gate (npm's preferred path):
+
+- `unpublish-version` — single version (e.g., wrong-name typo cleanup within 72h)
+- `unpublish-all` — full-package removal (`--force`)
+- `rename-redirect` — deprecate old name with redirect message + optionally unpublish eligible old versions; user publishes new name separately via `/init` or `/release`
+
+Eligibility check via [deps.dev](https://docs.deps.dev/api/v3/) `/dependents` API. Differentiates **deps.dev 404 (not indexed yet)** from API-down — a freshly-published wrong-name package isn't blocked just because deps.dev hasn't crawled it yet.
+
+Hard stops with **no override flag**: any version with dependents (would break consumers); post-72h with criteria not met (downloads >300/wk OR multiple owners). The escape hatch is manual `npm unpublish` outside the skill — the skill refuses to participate in unsafe operations, doesn't prevent the user.
+
+After successful unpublish, an **auto-cleanup gate** offers to delete the local + remote git tag and the GitHub Release in one step (or just the git tag, or keep both for audit trail). Git/GitHub artifacts are user-controlled — surfaced as a gate, not an automatic side-effect.
+
+### Cross-skill systemic hardening (H1–H6)
+
+A comprehensive cross-skill error-path audit surveyed about 257 error paths across all 12 skills and surfaced six systemic gaps. v0.10.0 lands the canonical reference patterns in `/solo-npm:unpublish` and references them from the 11 sibling skills:
+
+| Pattern | What | Affected skills |
+|---|---|---|
+| **H1** OTP / 2FA-on-writes | Detect `EOTP` / `OTP required` in `npm <cmd>` stderr; surface manual `--otp=<code>` handoff so the skill never hangs awaiting stdin OTP | `/deprecate`, `/dist-tag`, `/owner`, `/init` Phase 2c, `/unpublish` |
+| **H2** state.json corruption guard | try/catch around every `.solo-npm/state.json` read; non-fatal warning + treat as empty cache on parse fail | `/release`, `/prerelease`, `/hotfix`, `/init`, `/trust`, `/audit`, `/deps`, `/status`, `/verify`, all 4 destructive-CLI skills |
+| **H3** Auth-window race | Re-check `npm whoami` immediately before destructive op after any AskUserQuestion gate, in case the npm session expired during the wait | `/init` Phase 2c (canonical), `/release` + `/prerelease` (transitive via Phase G chain to `/deprecate`) |
+| **H4** Registry propagation lag retry | 3 attempts × 5s sleep on post-mutation `npm view`; non-fatal note if still inconsistent (npm CDN can take up to 5min) | `/release` C.7, `/prerelease` C.7, `/hotfix` E.5, `/deprecate` D, `/dist-tag` D, `/owner` D, `/deps`, `/unpublish` D.1 |
+| **H5** Concurrent invocation lock | File lock at `.solo-npm/locks/<pkg>.lock`; refuse to start if held; PID file with trap cleanup | `/deprecate`, `/dist-tag`, `/owner`, `/unpublish` |
+| **H6** Chain-target failure recovery | Capture child STOP messages verbatim and surface in parent context with retry/abort options; don't silently swallow chain failures | All 10 chain edges in the skill graph |
+
+The 11 sibling skills each got an "Error-handling patterns" subsection referencing `/unpublish`'s canonical wording, with skill-specific adaptation per pattern. 38 patches total.
+
+### Other changes
+
+- `/verify` Tier 3 secrets-detection HARD STOP block extended with a **post-publish remediation note**: if the secrets already shipped, *rotate first* (load-bearing fix), then `/solo-npm:unpublish` within the 72h window if available. Outside the window, fall back to `/deprecate` and rely on rotation.
+- `docs/regression.md` adds S13–S17 covering the `/unpublish` happy path, blocked-dependents HARD STOP, auth-window race detection, concurrent-lock refusal, and deps.dev 404 (not-indexed) treated as 0 dependents.
+- `docs/npm-coverage.md` moves `npm unpublish` from "non-goal" → "✓ shipped (v0.10.0)"; corrects stale "24h window" mentions to "72h" (npm policy changed years ago).
+- `docs/stability.md` updates the pre-v1.0.0 punch list — most v1.0.0 entry criteria now closed by v0.10.0.
+
+### Upgrading
+
+`/reload-plugins` after marketplace update. No state.json migration needed; the H2 corruption guard makes existing caches forward-compatible (any malformed entry is now non-fatal).
+
 ## v0.9.0 — stability roadmap + deps.dev integration + gh detection + audit clarification
 
 Continuing the path toward v1.0.0 (not declaring stability yet — v0.x experimental). Adds documentation for the stability commitments v1.0.0 will codify, plus a manual regression-scenario walkthrough as drift insurance, plus deps.dev integration in `/status` for security signals.

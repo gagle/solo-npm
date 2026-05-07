@@ -53,6 +53,12 @@ npm access list packages @myorg --json
 
 (Useful for cross-cutting org-wide audits.)
 
+## Error-handling pattern (H2 from `/unpublish` reference)
+
+`/status` reads `.solo-npm/state.json` for trust, audit, pkgCheck, and depsdev cache sections (Phase 2 below). Wrap every `JSON.parse(state.json)` read in try/catch — on parse fail, surface non-fatal warning *".solo-npm/state.json is malformed; rendering with empty cache (some columns may show `—` or `(no scan yet)`). Remove the file and re-run any solo-npm skill to regenerate."* and continue rendering with empty defaults per cache section. Don't crash the dashboard on a single malformed entry.
+
+`/status` is read-only and doesn't auto-chain into other skills (just suggests them as next-steps), so H6 (chain-target failure recovery) doesn't apply here. The `--fresh` flag manually invokes `/audit` and `/verify --pkg-check-only`; if those STOP, surface their diagnostics verbatim before falling back to render the dashboard with whatever cache state existed before.
+
 ## Phase 2 — Fan-out fetches
 
 For each package, fetch in **parallel** (don't serialize):

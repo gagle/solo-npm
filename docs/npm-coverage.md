@@ -61,7 +61,7 @@ Grouped by functional category. ★ marks operations that a solo-dev publisher r
 
 #### Publishing + version management
 - `npm publish` ★ — publish a tarball to the registry
-- `npm unpublish` — remove a published version (24h hard window for popular packages)
+- `npm unpublish` — remove a published version (72h window; post-72h restricted to no-dependents + <300 dl/wk + sole owner per [npm policy](https://docs.npmjs.com/policies/unpublish/))
 - `npm dist-tag add/rm/ls` ★ — manage dist-tags (`@latest`, `@next`, `@v1`, etc.)
 - `npm deprecate` ★ — mark a version (or range) as deprecated, with a message
 - `npm access list/get/set` — read or change public/restricted access on scoped packages
@@ -102,7 +102,7 @@ Grouped by functional category. ★ marks operations that a solo-dev publisher r
 - **Automation tokens** — machine-readable tokens that bypass 2FA prompts for CI (legacy now that OIDC exists).
 - **Security advisories** — GitHub Advisory Database integration; surfaced via `npm audit`. ★
 - **Package deprecation** — soft retire; the version stays installable but emits a warning. ★
-- **Package unpublishing** — 24-hour hard removal window for popular packages.
+- **Package unpublishing** — 72h window; post-72h restricted by npm policy (no dependents + <300 dl/wk + sole owner).
 - **Owner management** — `npm owner add/rm` allows multiple maintainers per package.
 - **Hooks** — registry-side webhooks for package events (publish, version, dist-tag changes).
 - **Organizations + teams** — paid feature for team workflows.
@@ -151,7 +151,7 @@ For each skill, the npm CLI commands and registry features it actually orchestra
 | `npm deprecate` | ✓ shipped v0.6.0 | `/solo-npm:deprecate` | — |
 | `npm owner` add/rm/ls | ✓ shipped v0.6.0 | `/solo-npm:owner` | — |
 | **`npm access` post-publish flip** | ✗ deferred non-goal | (manual `npm access set`) | LOW |
-| `npm unpublish` | ✗ not covered | — | (deferred non-goal — 24h window, rarely safe) |
+| `npm unpublish` (within 72h or post-72h criteria) | ✓ shipped v0.10.0 | `/solo-npm:unpublish` | — |
 | `npm token` mgmt | ✗ not covered | — | (deferred — OIDC obviates for CI) |
 | `npm 2FA` toggle | ✗ not covered | — | (deferred — once-per-account setup) |
 | `npm hook` (webhooks) | ✗ not covered | — | (deferred non-goal — niche) |
@@ -212,7 +212,7 @@ Today: the user opens a terminal and runs `npm deprecate <pkg>@<range> "message"
 
 **Why it matters**:
 - Deprecation messages surface as `npm WARN` during install — visible to every consumer running `npm i`.
-- It's the *gentle* alternative to unpublish (which has a 24h window and breaks consumers' lockfiles). Deprecation is reversible and preserves install-ability.
+- It's the *gentle* alternative to unpublish (which has a 72h window and breaks consumers' lockfiles). Deprecation is reversible and preserves install-ability.
 - Coordinated multi-package deprecation (e.g., "v1.x of every package in this monorepo is now EOL") is the natural counterpart to unified versioning.
 
 **Proposed shape**:
@@ -324,7 +324,7 @@ The original proposal table is preserved below for historical reference; the liv
 | `npm owner` add/rm/ls | `/owner` | ✓ shipped v0.6.0 |
 | Pre-publish manifest + tarball validation | `/verify` Step 5 | ✓ shipped v0.6.0 (spec) + v0.6.1 (publint + pack-audit) |
 | `npm access` set post-publish | (manual) | non-goal — rare |
-| `npm unpublish` | (manual) | non-goal — 24h window, rarely safe |
+| `npm unpublish` (72h window or post-72h criteria) | `/unpublish` | ✓ shipped v0.10.0 |
 | `npm token` mgmt | (manual) | non-goal — OIDC obviates |
 | `npm hook`, `npm org`, `npm team` | (manual) | non-goal — not solo-dev |
 
@@ -368,10 +368,10 @@ The Architecture section's "Two kinds of skills" subsection states the boundary:
 ### Deferred / non-goals (codified in README)
 
 - `/solo-npm:access` flip — rare; manual `npm access set` is fine.
-- `/solo-npm:rollback` — npm doesn't unpublish; "fix and bump" is canonical recovery; existing `/dist-tag repoint` + `/deprecate` covers the rare slow-fix scenario.
+- `/solo-npm:rollback` — fix-forward via new version is the canonical recovery; existing `/dist-tag repoint` + `/deprecate` covers the slow-fix scenario; `/unpublish` (v0.10.0) covers the wrong-name and rename-after-publish cases.
 - `/solo-npm:doc-sync` and equivalent script tooling — drift-prevention infrastructure for a once-a-quarter bug; cost-benefit didn't pencil out.
 - `npm sbom` integration — niche compliance.
-- `npm unpublish`, `npm token`, `npm hook`, `npm org`, `npm pack`, `npm search`, `npm star`, `npm fund` — non-goals per the README's coverage table.
+- `npm token`, `npm hook`, `npm org`, `npm pack`, `npm search`, `npm star`, `npm fund` — non-goals per the README's coverage table. (`npm unpublish` shipped in v0.10.0 as `/unpublish` — moved out of non-goals.)
 
 ---
 

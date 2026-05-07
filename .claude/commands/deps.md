@@ -199,6 +199,14 @@ If `All including Major` is selected, do a follow-up
 This is the human-decision gate for breaking changes. AI-orchestration
 ≠ AI-decision for breaking upgrades.
 
+## Phase 4.0 — Error-handling patterns (H2, H4, H6 from `/unpublish` reference)
+
+Before applying batches, register the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2:
+
+- **H2 — `.solo-npm/state.json` corruption guard**: Phase 7 reads existing `.solo-npm/state.json#audit` before updating tier1/tier2 counts. Wrap the read in try/catch — on parse fail, surface non-fatal warning, treat as empty cache, write a fresh structure. Don't lose the upgrade outcome.
+- **H4 — Registry propagation lag retry**: not directly applicable to deps (no post-mutation `npm view` against the registry per package; `npm outdated` reads are pre-mutation). However, if a batch's verify step transiently fails due to lockfile-resolution flake against the registry, the retry-once-with-1s-delay pattern from `/unpublish` C.1 applies.
+- **H6 — Chain-target failure recovery**: chains into `/solo-npm:verify` between batches (Phase 4c). If verify STOPs (lint/test/build fail) or HARD STOPs (secrets), capture the diagnostic and surface in `/deps` context. The existing rollback-via-git logic already handles the rollback half; H6 adds the surfacing-with-retry-options half: AskUserQuestion *"Verify failed on batch N: `<verbatim>`. Roll back and skip / Retry batch / Drop into agent-skills:debugging-and-error-recovery / Abort."*
+
 ## Phase 4 — Apply (per batch with /verify gate)
 
 Apply tiers in this order (lowest risk first):

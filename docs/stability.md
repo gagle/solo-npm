@@ -61,7 +61,7 @@ These are explicit non-promises so consumers don't accidentally depend on them:
 
 ## What needs to land before v1.0.0
 
-The pre-v1.0.0 punch list (status as of v0.9.0):
+The pre-v1.0.0 punch list (status as of v0.10.0):
 
 | Item | Status | Where |
 |---|---|---|
@@ -74,11 +74,28 @@ The pre-v1.0.0 punch list (status as of v0.9.0):
 | `docs/stability.md` (this doc) | ✓ shipped v0.9.0 | docs/stability.md |
 | `docs/regression.md` (manual scenario walkthrough) | ✓ shipped v0.9.0 | docs/regression.md |
 | `deps.dev` integration in `/status` | ✓ shipped v0.9.0 | status.md Phase 2 + Phase 3 |
+| **Wrong-name + rename-after-publish recovery** (`/unpublish`) | ✓ shipped v0.10.0 | unpublish.md (skill #13) |
+| **Cross-skill systemic error-handling hardening** (H1 OTP, H2 cache corruption, H3 auth-window race, H4 registry propagation, H5 concurrent locking, H6 chain-target failure) | ✓ shipped v0.10.0 | All 12 skills; canonical patterns in unpublish.md Phases C.0–D.2; references in 11 sibling skills |
+| **Auto-cleanup gate for git tags + GitHub Releases** post-unpublish | ✓ shipped v0.10.0 | unpublish.md Phase D.3 |
+| **`/verify` post-publish secrets remediation note** | ✓ shipped v0.10.0 | verify.md Tier 3 |
 | **Demo / showcase repo** (`solo-npm-example`) | open | not yet started |
 | **Wider adoption signal** — at least one external user beyond rfc-bcp47/ncbijs | open | depends on outreach |
 | **Skill-spec drift caught at least once via the regression checklist** before being noticed in production | open | requires release cycles |
 
-The first 9 items are landed. The remaining 3 are external/temporal — they need real-world usage to validate that the API holds up. **v1.0.0 won't ship until those are met.**
+The first 13 items are landed (v0.10.0 closed four major ones in a single release). The remaining 3 are external/temporal — they need real-world usage to validate that the API holds up. **v1.0.0 won't ship until those are met.**
+
+### v0.10.0 hardening summary
+
+The cross-skill systemic hardening pass landed in v0.10.0 closes most of what would have been the "v1.0.0 entry criteria" backlog. Pattern reference implementations live in `/solo-npm:unpublish` (Phases C.0–D.2) and are referenced from each affected sibling skill's Phase C.0 (or top-level "Error-handling patterns" subsection). The six patterns:
+
+- **H1 — OTP / 2FA-on-writes detection** in `npm publish/unpublish/deprecate/dist-tag/owner` stderr; manual handoff with `--otp=<code>` form so the skill never hangs awaiting stdin.
+- **H2 — `.solo-npm/state.json` corruption guard**: try/catch every read, treat parse-fail as empty cache with a non-fatal warning.
+- **H3 — Auth-window race**: re-check `npm whoami` immediately before each destructive call after long AskUserQuestion gates.
+- **H4 — Registry propagation lag retry**: 3 attempts × 5s sleep on post-mutation `npm view`; non-fatal note (not HARD STOP) if still inconsistent.
+- **H5 — Concurrent invocation lock**: per-package file lock at `.solo-npm/locks/<sanitized-pkg>.lock`; refuse to start if held; PID file with trap cleanup.
+- **H6 — Chain-target failure recovery**: capture child STOP messages and surface in parent context with retry/abort options; never silently swallow.
+
+The patterns are documented in v0.10.0's CHANGELOG with the full per-skill patch matrix.
 
 ## Versioning policy in v0.x
 

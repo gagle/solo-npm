@@ -120,6 +120,16 @@ Options:
   - Abort
 ```
 
+## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6 from `/unpublish` reference)
+
+Before destructive `npm deprecate` calls, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2; concrete adaptation per pattern:
+
+- **H1 — OTP / 2FA-on-writes**: detect `EOTP` / `OTP required` in `npm deprecate` stderr. Surface manual handoff: *"npm requires an OTP. Run `npm deprecate <pkg>@<v> '<msg>' --otp=<your-OTP>` manually outside the skill, then re-invoke `/solo-npm:deprecate` to resume the remaining versions."*
+- **H2 — `.solo-npm/state.json` corruption guard**: any `JSON.parse(state.json)` read (e.g., trust/audit cache reads in Phase A) must be wrapped in try/catch. On parse fail surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache. Remove the file and re-run any solo-npm skill to regenerate."* Continue with empty defaults; don't crash.
+- **H4 — Registry propagation lag retry**: Phase D verify (`npm view <pkg>@<v> deprecated`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP if still inconsistent — surface non-fatal note: *"Registry not yet reflecting deprecation after 15s — npm CDN may take up to 5 minutes; re-check later with `npm view <pkg>@<v> deprecated`."*
+- **H5 — Concurrent invocation lock**: at Phase C start (per package), acquire `.solo-npm/locks/<sanitized-pkg-name>.lock` with `mkdir -p .solo-npm/locks && [ -f LOCK ] && kill -0 $(cat LOCK) 2>/dev/null && exit 1; echo $$ > LOCK; trap 'rm -f LOCK' EXIT`. Refuse to start if another solo-npm skill holds it; user must wait or `rm` the stale lockfile.
+- **H6 — Chain-target failure recovery**: when this skill is auto-chained from `/release` Phase G, `/audit` Phase 5, or `/unpublish` Gate 1, capture any internal STOP and surface the verbatim diagnostic upward. The parent skill's own H6 handler will offer retry/abort options. Don't silently swallow.
+
 ## Phase C — Execute
 
 For each version of each package, with **200ms inter-call backoff**:

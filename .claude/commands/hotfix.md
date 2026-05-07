@@ -106,6 +106,14 @@ LATEST_STABLE_MAJOR=$(echo "$LATEST_STABLE" | sed -E 's/^v([0-9]+).*/\1/')
 
 Surface the target dist-tag to the user as part of Phase D's plan (so they understand where the patch will land).
 
+## Phase D.0 — Error-handling patterns (H2, H4, H6 from `/unpublish` reference)
+
+Before applying the fix and progressing through Phases D–G, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2:
+
+- **H2 — `.solo-npm/state.json` corruption guard**: state.json reads (e.g., the bundle-size cache write in Phase E.7, or any future hotfix-aware cache lookup) wrap in try/catch. On parse fail surface non-fatal warning, treat as empty cache, continue.
+- **H4 — Registry propagation lag retry**: Phase E.5 verify (`npm view <pkg>@<NEXT_VERSION>` and `npm view <pkg> dist-tags.<target-tag>`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP the hotfix on lag — the publish via CI succeeded, this is verification lag.
+- **H6 — Chain-target failure recovery**: chains into `/init --refresh-yml` (Phase A if release.yml stale), `/release` (Phase F.5 forward-port). Capture child STOP messages verbatim and surface in `/hotfix` context with retry/abort options. For Phase F.5: if the forward-port chain fails after a successful cherry-pick, the cherry-pick is already on main — surface clearly so the user can resume manually.
+
 ## Phase D — Apply fix
 
 Two sub-paths: **cherry-pick mode** (when `CHERRY_PICK_SHA` was extracted in Phase 0) or **describe-the-fix mode** (everything else).

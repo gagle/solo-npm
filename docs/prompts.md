@@ -156,6 +156,20 @@ Scenario: bus-factor mitigation, ownership transfer, audit.
 | *"Remove @old-collaborator from @ncbijs/eutils"* | Single-package rm; rejects sole-owner removal. |
 | *"Who has publish access to npm-trust?"* | Single-package owner list. |
 
+### `/solo-npm:unpublish` — destructive recovery (wrong name, rename, secrets emergency)
+
+Scenario: wrong package name shipped, rename intent post-publish, or accidentally-published-secrets cleanup. **Defaults to recommending deprecate**; unpublish is opt-in destructive.
+
+| Prompt | What happens |
+|---|---|
+| *"Unpublish @gagel/foo@1.0.0 — typo in the scope"* | Phase 0 extracts OPERATION=unpublish-version, NAME=@gagel/foo, VERSION=1.0.0. Phase A.3 calls deps.dev `/dependents` (404=not-indexed → treat as 0; 200 with count → use it; 5xx → STOP). Phase A.4 renders the eligibility table with the failing-criterion detail when blocked. Phase B Gate 1 offers Deprecate (recommended) vs Unpublish (destructive). Pick Unpublish, Gate 2 fires for explicit confirmation. Phase C.0 re-checks `npm whoami` (auth-window race) + acquires `.solo-npm/locks/<name>.lock`. Phase C.1 runs the unpublish; Phase D.1 verifies with 3 × 5s retry; Phase D.3 fires the auto-cleanup gate (Yes both / Just tags / No) for git tag + GitHub Release deletion. |
+| *"Rename @gagle/eutils to @ncbijs/eutils"* | Phase 0 extracts OPERATION=rename-redirect, OLD_NAME, NEW_NAME. Phase A.5 validates that NEW_NAME is either unregistered (404 fine — user will publish it next) or registered AND owned by the current user (otherwise HARD STOP). Phase B's rename gate offers Deprecate-only (recommended) vs Deprecate+unpublish-eligible-versions. The deprecate runs first so consumers always have a redirect message even if the unpublish step fails. |
+| *"I shipped @wrong/foo by mistake — wipe it"* | OPERATION=unpublish-all. Two-gate confirmation. `npm unpublish --force` removes everything; auto-cleanup gate offers to delete every git tag and GitHub Release for the unpublished versions. |
+| *"@wrong/foo@1.0.0 has dependents — unpublish it anyway"* | HARD STOP — no override flag. The skill surfaces *"... has N dependents per deps.dev. Cannot unpublish without breaking them. Deprecate instead, or contact the dependents to migrate first."* The escape hatch is manual `npm unpublish` outside the skill. |
+| *"Delete v0.5.0 — it's 6 months old and I don't need it anymore"* | Phase A.4 classifies as `blocked-criteria` if past-72h AND any of (downloads >300/wk OR multiple owners). Status row shows the failing knob: `blocked: 350 dl/wk (limit 300)`. HARD STOP with a pointer to deprecate. |
+
+If a chained `/solo-npm:deprecate` fails (e.g., empty matching range), the chain-failure handler surfaces the child diagnostic verbatim with retry/abort options — no silent swallowing.
+
 ## Compound real-world workflows
 
 ### Day 1: brand-new package → on npm with provenance
@@ -308,6 +322,63 @@ You:  Ship 1.6.1.
 You:  [agent could surface /solo-npm:deprecate undeprecate offer for 1.6.0 if user wants —
         otherwise the deprecation persists which is fine; 1.6.0 stays installed-but-warned]
 ```
+
+### Wrong-name fast cleanup (within 72h)
+
+Scenario: just published `@gagel/eutils@1.0.0` 5 minutes ago — typo in the scope (should have been `@gagle/eutils`). Want to delete the wrong-name artifact and re-release under the correct name.
+
+```
+You:  I just published @gagel/eutils@1.0.0 — wrong scope. Delete it.
+       (agent runs /solo-npm:unpublish → Phase 0 extracts OPERATION=unpublish-version,
+        NAME=@gagel/eutils, VERSION=1.0.0 → Phase A.1 npm whoami passes →
+        Phase A.3 calls deps.dev `/dependents` — returns 404 (not indexed yet,
+        published 5 min ago) → treated as 0 dependents (safe by definition; nobody
+        had time to install) → surface non-fatal note "deps.dev has not yet indexed,
+        treating as 0" → Phase A.4 renders eligibility: ✓ eligible (within 72h) →
+        Phase B Gate 1: Deprecate (recommended) vs Unpublish (DESTRUCTIVE))
+
+You:  [pick "Unpublish — it's literally just a typo, no consumer has it"]
+       (Gate 2 fires: "Read carefully: irreversible; same version cannot be republished"
+        → user clicks "I understand" → Phase C.0 re-checks npm whoami (auth-window
+        race) + acquires .solo-npm/locks/@gagel_eutils.lock → Phase C.1 runs
+        npm unpublish @gagel/eutils@1.0.0 → Phase D.1 verifies via `npm view`
+        with 3 × 5s retry → Phase D.3 fires auto-cleanup gate)
+
+You:  [pick "Yes, both — delete git tag + GitHub Release"]
+       (agent runs `git tag -d v1.0.0 && git push origin :refs/tags/v1.0.0` →
+        `gh release delete v1.0.0 --yes` → final summary shows everything cleaned)
+
+You:  Now publish under the correct name.
+       (agent edits package.json#name to @gagle/eutils → runs /release → first-publish
+        gate via /init Phase 2 if needed → ships v1.0.0 under the correct name)
+```
+
+End state: `@gagel/eutils` (typo) is removed from npm + git + GitHub. `@gagle/eutils@1.0.0` (correct) is the live release. No consumer was affected (the typo'd version had 0 installs; deps.dev would have flagged any).
+
+### Rename after publish (deprecate-only path)
+
+Scenario: shipped `@gagle/eutils` for 6 months; want to migrate to org name `@ncbijs/eutils` going forward without breaking existing consumers.
+
+```
+You:  Rename @gagle/eutils to @ncbijs/eutils.
+       (agent runs /solo-npm:unpublish → Phase 0 extracts OPERATION=rename-redirect,
+        OLD_NAME=@gagle/eutils, NEW_NAME=@ncbijs/eutils → Phase A.5 validates
+        NEW_NAME — `npm view @ncbijs/eutils` returns 404 (unregistered, fine; user
+        will publish next) → Phase B Rename Gate: Deprecate-only (recommended) vs
+        Deprecate+unpublish-eligible)
+
+You:  [pick "Deprecate-only" — package has been live for months, real consumers]
+       (agent runs npm deprecate @gagle/eutils with message
+        "Renamed to @ncbijs/eutils. Install: npm i @ncbijs/eutils" — wildcard
+        deprecates ALL existing versions → Phase D.1 verifies → no auto-cleanup
+        gate fires (no versions actually unpublished) → final summary)
+
+You:  Now publish @ncbijs/eutils.
+       (agent runs /init in a fresh repo or updates package.json#name and runs
+        /release → publishes @ncbijs/eutils@1.0.0)
+```
+
+End state: `@gagle/eutils` versions stay on npm (consumers' lockfiles still resolve) but every `npm install` shows `npm WARN deprecated @gagle/eutils@<v>: Renamed to @ncbijs/eutils. Install: npm i @ncbijs/eutils`. Consumers migrate at their own pace.
 
 ### Bus-factor audit
 

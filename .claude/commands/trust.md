@@ -211,6 +211,11 @@ Then call `AskUserQuestion` to gate Phase 2:
 
 ## Phase 2 — Execute
 
+### Error-handling patterns (H2, H6 from `/unpublish` reference)
+
+- **H2 — `.solo-npm/state.json` corruption guard**: Step 11 (state cache write) reads the existing file before writing the trust update. If parse fails, surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache."* and write a fresh structure. Don't lose the trust update on a stale cache.
+- **H6 — Chain-target failure recovery**: this skill is auto-chained from `/release` Phase A.3 (delta) and `/init` Phase 3. If trust setup STOPs internally (npm-trust CLI error, web 2FA timeout, etc.), surface the verbatim diagnostic in the parent skill's context. The parent's own H6 handler will offer retry/abort.
+
 ### 7. Auth gate (hard)
 
 Run:

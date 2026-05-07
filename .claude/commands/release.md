@@ -327,6 +327,15 @@ Prepend a section to `CHANGELOG.md` (compute, do NOT write yet):
 
 Only include sections with entries.
 
+## Phase C.0 — Error-handling patterns (H2, H3, H4, H6 from `/unpublish` reference)
+
+Before kicking off the execute steps, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2; concrete adaptation per pattern:
+
+- **H2 — `.solo-npm/state.json` corruption guard**: every `JSON.parse(state.json)` read in Phase A.3 (trust cache), A.5 (audit cache), and the post-publish writes in C.7.6 (bundle-size cache) must wrap in try/catch. On parse fail surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache. Remove the file and re-run any solo-npm skill to regenerate."* Continue with empty defaults; do not block the release on a stale cache.
+- **H3 — Auth-window race**: `npm publish` runs in CI via OIDC (no local auth window), so this is mostly a no-op for the publish step itself. However, Phase G's chain to `/solo-npm:deprecate` invokes local `npm deprecate`; that chain target inherits its own Phase C.0 H3 / H1 / H5 handlers (`npm whoami` re-check + lock acquisition + EOTP detection), so H3 is satisfied transitively. Don't duplicate the check here.
+- **H4 — Registry propagation lag retry**: Phase C.7 verify (`npm view <pkg>@<v>` post-publish, `npm view <pkg> dist-tags`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP the release on lag — surface non-fatal note: *"Registry not yet reflecting publish after 15s — npm CDN may take up to 5 minutes; tag is on origin and CI succeeded, so this is verification lag, not a publish failure."*
+- **H6 — Chain-target failure recovery**: chains into `/verify` (A.2, C.4), `/init` (A.3 WORKFLOWS_NONE auto-fix), `/trust` (A.3 delta), `/audit` (A.5 cached check), `/deprecate` (Phase G) — when any chain target STOPs, capture its verbatim diagnostic and surface in `/release` context with options: retry the chain / abort / skip-and-continue (where safe). Don't silently swallow.
+
 ## Phase C — Execute
 
 After approval at B.5, run all of the following without further user

@@ -30,6 +30,15 @@ Two modes:
 
 **Refresh mode** (`--refresh-yml`) — surgical updates to existing `release.yml` without re-running the full plan. Used by `/solo-npm:prerelease` and `/solo-npm:hotfix` Phase A when they detect a stale workflow that lacks the dist-tag detection step. Idempotent — no-op if `release.yml` is already current. See [Refresh-only mode](#refresh-only-mode---refresh-yml) below.
 
+## Error-handling patterns (H1, H2, H3, H6 from `/unpublish` reference)
+
+This skill applies the standard solo-npm error patterns where they're relevant. Canonical wording lives in `/unpublish` Phases C.0–D.2:
+
+- **H1 — OTP / 2FA-on-writes**: applied at Phase 2c (the first-publish step). See Phase 2c body for the EOTP detection + manual handoff.
+- **H2 — `.solo-npm/state.json` corruption guard**: any read of an existing `.solo-npm/state.json` (rare in /init since the cache is usually empty on first bootstrap, but possible if the user re-runs after a prior partial setup) wraps in try/catch. On parse fail surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache. Remove the file and re-run."* Continue with empty defaults; don't abort scaffold.
+- **H3 — Auth-window race**: applied between Phase 2a (`npm whoami` + AskUserQuestion gate "Done with login?") and Phase 2c (the actual `npm publish` call) — the user may have paused at 2b for minutes, so the session may have expired. The Phase 2c body re-checks `npm whoami` immediately before publish.
+- **H6 — Chain-target failure recovery**: chains into `/verify --pkg-check-only` (Phase 1d), `/trust` (Phase 3). When any chain target STOPs, capture the verbatim diagnostic and surface in `/init` context with retry/abort options. Don't silently swallow — the user needs to know whether trust setup completed or not.
+
 ## Phase 1 — Scaffold
 
 ### 1a. Detect existing repo state (silent reads)
@@ -518,9 +527,17 @@ Options:
 
 The question text shows the **resolved package name** so the user can sanity-check before claiming. No `--provenance` (chicken-and-egg: trust isn't configured yet, so OIDC can't sign this initial publish; provenance will be added on subsequent releases via `release.yml`'s `--provenance=true`).
 
-### 2c. Execute on Yes
+### 2c. Execute on Yes — error patterns (H1, H3 from `/unpublish` reference)
+
+Before the publish call, apply auth-window race re-check (H3): the user just answered AskUserQuestion at 2b; the npm session from 2a may be 30+ seconds stale by now. Re-run `npm whoami` immediately before the publish; if it now fails or returns a different user, surface the auth handoff again before proceeding.
 
 ```bash
+# H3 re-check (after AskUserQuestion gate at 2b)
+WHOAMI_NOW=$(npm whoami 2>&1) && [ "$WHOAMI_NOW" = "$WHOAMI_AT_2A" ] || {
+  echo "ERROR: npm session changed/expired since Phase 2a. Re-authenticate and retry."
+  exit 1
+}
+
 cd <package-dir>
 npm publish --provenance=false --access public
 ```
@@ -529,7 +546,17 @@ Capture stdout + stderr. On success, surface:
 
 > ✓ Published `<NAME>@<VERSION>` to npm. Continuing to Phase 3 (trust config).
 
-On failure (e.g., name already taken by someone else, registry rejection), surface npm error verbatim and STOP:
+On failure, classify the error and surface remediation:
+
+| Detected | Treatment |
+|---|---|
+| **`EOTP` / `OTP required` in stderr (H1 pattern)** | Surface manual handoff: *"npm requires an OTP for first publish. Run `npm publish --provenance=false --access public --otp=<your-OTP>` manually in `<package-dir>`, then re-invoke `/solo-npm:init` (it'll skip Phase 1 idempotently and continue from Phase 2)."* |
+| `EAUTH` / `Unauthorized` / 401 / 403 | Auth expired between 2a and 2c (H3 race that slipped through) → surface re-login handoff |
+| `EPUBLISHCONFLICT` / 409 / `cannot publish over` | Name already taken (typically by someone else, but could be a previous successful publish) → STOP with `npm view <NAME>` hint |
+| Network error / 5xx / timeout | Registry transient → STOP with retry hint |
+| Other | STOP with verbatim npm error and the common-causes list |
+
+Verbatim STOP block for the "Other" path:
 
 > ❌ Publish failed: `<npm error>`
 >
@@ -537,6 +564,7 @@ On failure (e.g., name already taken by someone else, registry rejection), surfa
 >   - Package name already taken (check with `npm view <NAME>`).
 >   - Authentication expired (re-run `npm login`).
 >   - Registry rejection (rare; check npm status page).
+>   - 2FA OTP required (re-run with `--otp=<code>`).
 >
 > Fix the underlying issue, then re-invoke `/solo-npm:init`.
 

@@ -112,6 +112,15 @@ Where `NEXT_BUMP` is computed via `npm version prerelease` semantics (e.g., `1.1
 
 If Phase 0 extracted a hint like "promote", pre-select that option (still surface the prompt for explicit approval — the publish itself is destructive).
 
+## Phase C.0 — Error-handling patterns (H2, H3, H4, H6 from `/unpublish` reference)
+
+Before the execute steps, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2:
+
+- **H2 — `.solo-npm/state.json` corruption guard**: state.json reads (trust cache lookups during Phase A) wrap in try/catch. On parse fail surface non-fatal warning, treat as empty cache, continue.
+- **H3 — Auth-window race**: pre-release publish runs in CI via OIDC, so the local-auth race window doesn't apply to the publish itself. The chain to `/solo-npm:dist-tag cleanup-stale` (Phase E PROMOTE) inherits the dist-tag skill's own Phase C.0 H3/H1 handlers, so the race is covered transitively.
+- **H4 — Registry propagation lag retry**: Phase C.7 verify (`npm view <pkg> dist-tags.next` etc.) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP — surface non-fatal note about CDN lag and continue to summary.
+- **H6 — Chain-target failure recovery**: chains into `/verify` (Phase C.4) and `/dist-tag cleanup-stale` (Phase E PROMOTE). Capture child STOP messages verbatim and surface in `/prerelease` context with retry/abort options.
+
 ## Phase C — Execute
 
 After approval, run all of the following without further user interaction. Halt on first failure.

@@ -249,6 +249,92 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Verify**: dashboard renders quickly; no rate-limit-style delays.
 
+### S13 — Wrong-name unpublish + auto-cleanup (happy path within 72h)
+
+**Setup**: a fresh repo just published `@gagel/eutils@1.0.0` (typo — should have been `@gagle/eutils`) about 5 minutes ago via `/release`. Git tag `v1.0.0` and a GitHub Release `v1.0.0` exist.
+
+**Trigger**: *"I shipped @gagel/eutils — wrong scope. Delete it."*
+
+**Expected**:
+- /unpublish Phase 0 extracts OPERATION=unpublish-version, NAME=@gagel/eutils, VERSION=1.0.0.
+- Phase A.1 npm whoami passes.
+- Phase A.3 calls deps.dev `/dependents` — hits 404 (not yet indexed). Treated as `dependentCount = 0` with a non-fatal note about indexing lag.
+- Phase A.4 renders eligibility table; v1.0.0 shows `✓ eligible (within 72h)`.
+- Phase B Gate 1 surfaces Deprecate (recommended) vs Unpublish vs Abort. User picks Unpublish.
+- Gate 2 fires for explicit destructive confirmation.
+- Phase C.0 re-runs `npm whoami` (auth-window race re-check) and acquires `.solo-npm/locks/@gagel_eutils.lock`.
+- Phase C.1 runs `npm unpublish @gagel/eutils@1.0.0`.
+- Phase D.1 verifies via `npm view` with 3 × 5s retry (may need at least one retry due to CDN propagation).
+- Phase D.3 fires the auto-cleanup gate (Yes both / Just tags / No / Abort). User picks "Yes, both".
+- `git tag -d v1.0.0 && git push origin :refs/tags/v1.0.0` runs successfully.
+- `gh release delete v1.0.0 --yes` runs successfully.
+- Final summary shows everything cleaned, including the deps.dev not-indexed note as historical context.
+
+**Verify**:
+- `npm view @gagel/eutils@1.0.0` returns 404.
+- `git tag --list v1.0.0` returns empty.
+- `gh release view v1.0.0` returns "release not found".
+- `.solo-npm/state.json#pkgCheck.lastSize` no longer contains `@gagel/eutils@1.0.0`.
+- `.solo-npm/locks/` does not contain a stale lock file (trap cleanup ran).
+
+### S14 — Blocked-dependents HARD STOP (no override)
+
+**Setup**: published package with at least one dependent on the registry per deps.dev (any sufficiently-old solo-npm-managed package will work — pick one with a real consumer).
+
+**Trigger**: *"unpublish @ncbijs/eutils@1.5.0 — I want it gone."*
+
+**Expected**:
+- Phase A.3 calls deps.dev `/dependents` → returns 200 with `dependentCount > 0`.
+- Phase A.4 renders eligibility with the failing-criterion detail: `❌ blocked: dependents (<N>)`.
+- Skill **HARD STOPs before any gate fires**, surfacing: *"`<NAME>@<VERSION>` has `<N>` dependents (per deps.dev). Cannot unpublish without breaking them. Deprecate instead, or contact those dependents to migrate first. There is no `--force-with-dependents` override in this skill."*
+- No `npm unpublish` call ever runs.
+
+**Verify**: no destructive action; npm registry untouched; `.solo-npm/state.json` unchanged.
+
+### S15 — Auth-window race fires (Phase C.0 re-check)
+
+**Setup**: simulate auth expiry by running `/unpublish` to Gate 2, then in a separate terminal run `npm logout`, then complete Gate 2.
+
+**Trigger**: any `/unpublish` invocation that reaches Gate 2.
+
+**Expected**:
+- Phase A.1 `npm whoami` passes (user authenticated at start).
+- User pauses at Gate 2 long enough to logout in another terminal.
+- User confirms Gate 2 ("I understand and want to proceed").
+- Phase C.0 re-runs `npm whoami` and detects logged-out state.
+- Skill halts before any `npm unpublish` call. Surfaces the foolproof `npm login` handoff again with an AskUserQuestion gate ("Done with re-login?") — same pattern as Phase A.1.
+- After re-login, Phase C.0 re-checks and proceeds.
+
+**Verify**: registry was never touched during the logged-out window. The lock file `.solo-npm/locks/<name>.lock` was either never acquired (if halt happened before C.0 lock step) or properly released via trap.
+
+### S16 — Concurrent-lock refusal
+
+**Setup**: in terminal A, start `/unpublish @scope/foo` and pause it at Gate 2 (don't approve). In terminal B, also start `/unpublish @scope/foo`.
+
+**Trigger**: terminal B's `/unpublish` invocation.
+
+**Expected**:
+- Terminal A holds `.solo-npm/locks/@scope_foo.lock` (acquired in Phase C.0 — but the lock is acquired AFTER Gate 2 confirmation, so this scenario requires terminal A to be PAST Gate 2 already).
+- More realistic: terminal A is in C.1 mid-execution. Terminal B reaches Phase C.0 and finds the lock held by A's PID.
+- Terminal B halts cleanly with: *"ERROR: another /unpublish run holds .solo-npm/locks/@scope_foo.lock (PID `<pid-of-A>`). Wait for it to finish, or remove the stale lockfile if the process is dead."*
+- Terminal A continues unaffected.
+
+**Verify**: terminal A completes successfully. Terminal B never executed any `npm unpublish` call. After terminal A completes, the lock file is gone (trap cleanup); terminal B can be re-run successfully.
+
+### S17 — deps.dev 404 treated as 0 dependents (not API-down)
+
+**Setup**: publish a fresh new package (within the last few minutes — definitely before deps.dev has indexed it). Confirm `curl -s -o /dev/null -w "%{http_code}" https://api.deps.dev/v3/systems/npm/packages/<name>/versions/<v>:dependents` returns `404`.
+
+**Trigger**: `/unpublish <fresh-pkg>@<v>`.
+
+**Expected**:
+- Phase A.3 detects `HTTP_STATUS = 404` and DOES NOT route into the "API unreachable, STOP" branch.
+- Phase A.3 surfaces a non-fatal note: *"deps.dev has not yet indexed `<pkg>` (typically 5–60min after first publish). Treating as 0 dependents — true for any package no consumer has had time to install yet."*
+- Phase A.4 renders eligibility with `Status` column suffixed `(deps.dev not yet indexed)`.
+- The skill proceeds normally (does NOT block on deps.dev being unindexed).
+
+**Verify**: this is the load-bearing test for the wrong-name fast-cleanup happy path. If S17 fails (skill HARD STOPs on 404), `/unpublish` is broken for the exact use case it was designed to handle.
+
 ## Drift indicators to watch
 
 When walking through these scenarios, **suspect drift** if you see:

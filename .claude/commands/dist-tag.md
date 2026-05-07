@@ -138,6 +138,16 @@ Options:
   - Abort
 ```
 
+## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6 from `/unpublish` reference)
+
+Before destructive `npm dist-tag` calls, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2; concrete adaptation per pattern:
+
+- **H1 — OTP / 2FA-on-writes**: detect `EOTP` / `OTP required` in `npm dist-tag` stderr. Surface manual handoff: *"npm requires an OTP. Run `npm dist-tag add <pkg>@<v> <tag> --otp=<your-OTP>` (or `npm dist-tag rm <pkg> <tag> --otp=<your-OTP>`) manually outside the skill, then re-invoke `/solo-npm:dist-tag` to resume the remaining mutations."*
+- **H2 — `.solo-npm/state.json` corruption guard**: any `JSON.parse(state.json)` read (e.g., trust cache in Phase A.2 doctor invocation) must be wrapped in try/catch. On parse fail surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache. Remove the file and re-run any solo-npm skill to regenerate."* Continue with empty defaults.
+- **H4 — Registry propagation lag retry**: Phase D verify (`npm view <pkg> dist-tags --json`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP if still inconsistent — surface non-fatal note: *"Registry not yet reflecting dist-tag mutation after 15s — npm CDN may take up to 5 minutes; re-check later with `npm view <pkg> dist-tags`."*
+- **H5 — Concurrent invocation lock**: at Phase C start (per package), acquire `.solo-npm/locks/<sanitized-pkg-name>.lock` (PID file with `trap` cleanup). Refuse to start if another solo-npm skill holds it.
+- **H6 — Chain-target failure recovery**: when auto-chained from `/status` (stale-`@next` warning) or `/prerelease` PROMOTE Phase E, capture any internal STOP and surface upward to the parent skill's H6 handler. Don't silently swallow.
+
 ## Phase C — Execute
 
 For each mutation, with **200ms inter-call backoff** to avoid registry rate limits:

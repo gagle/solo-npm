@@ -275,6 +275,11 @@ detail: deps re-runs `pnpm audit` itself; the filter is a hint.)
   through `/solo-npm:deps` (which has the verify gates). This is
   intentional: audit shows risk; deps mitigates with safety.
 
+## Error-handling patterns (H2, H6 from `/unpublish` reference)
+
+- **H2 — `.solo-npm/state.json` corruption guard**: Phase 6 reads existing `.solo-npm/state.json` before merging the audit update. Wrap the read in try/catch — on parse fail, surface non-fatal warning *".solo-npm/state.json is malformed; writing a fresh structure with this audit's results."* and proceed with empty defaults. Don't lose the audit run on a stale cache.
+- **H6 — Chain-target failure recovery**: Phase 5 chains into `/solo-npm:deps cve-tier-1` (option 1/2) and `/solo-npm:deprecate` (option 3). If the chain target STOPs internally (e.g., `/deps` lockfile conflict, `/deprecate` empty range), capture the verbatim diagnostic and surface in `/audit` context with retry/abort options. The audit itself isn't lost — Phase 6 still writes the cache with the audit results — but the user knows the remediation chain didn't complete.
+
 ## Phase 6 — Update audit cache
 
 After Phase 4 renders the report (whether Phase 5's gate fired or not), write the results to `.solo-npm/state.json#audit`:

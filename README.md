@@ -72,6 +72,7 @@ Beyond the release moment, the operate skills (`/status`, `/audit`, `/deps`) rep
 | **Operate** | [`/solo-npm:dist-tag`](.claude/commands/dist-tag.md) | Manage `npm dist-tag` post-publish — cleanup stale `@next`, repoint `@latest`, channels (`@canary`). |
 | **Operate** | [`/solo-npm:deprecate`](.claude/commands/deprecate.md) | Mark versions deprecated (range-aware, mass + reversible). Safer than `npm unpublish`. |
 | **Operate** | [`/solo-npm:owner`](.claude/commands/owner.md) | Manage maintainers across packages — bus-factor mitigation, audits, transfer. |
+| **Recovery** | [`/solo-npm:unpublish`](.claude/commands/unpublish.md) | Remove or rename published packages with strict safety gates — wrong-name cleanup, rename-redirect. Defaults to deprecate. |
 
 ---
 
@@ -94,7 +95,7 @@ solo-npm wraps the npm commands a solo-dev publisher actually runs. Honest about
 | `npm login` + 2FA + OIDC trust config | [`/solo-npm:trust`](.claude/commands/trust.md) | ✓ |
 | `package.json` completeness validation | [`/solo-npm:verify`](.claude/commands/verify.md) Step 5: pkg-check | ✓ |
 | `npm access` set post-publish | (manual `npm access set`) | non-goal — rare |
-| `npm unpublish` | (manual `npm unpublish`) | non-goal — 24h window, rarely safe |
+| `npm unpublish` (within 72h or post-72h criteria) | [`/solo-npm:unpublish`](.claude/commands/unpublish.md) | ✓ shipped v0.10.0 |
 | `npm token` mgmt | (manual `npm token`) | non-goal — OIDC obviates for CI |
 | `npm hook`, `npm org`, `npm team` | (manual) | non-goal — not solo-dev |
 | `npm sbom` | (manual `npm sbom`) | defer — niche compliance |
@@ -355,6 +356,23 @@ Severity by context: standalone `/verify` surfaces errors as warnings (don't hal
 **Auth note**: same as `/dist-tag` — local `npm login` required.
 
 **Triggers from**: *"add @backup-maintainer to all my packages"*, *"show me who can publish each package"*, *"remove @old-collaborator from @ncbijs/eutils"*, *"audit ownership across portfolio"*.
+
+### `/solo-npm:unpublish` — remove or rename published packages (strict safety)
+
+**Purpose**: the destructive escape hatch for the rare-but-real cases where deprecation isn't enough — wrong package name shipped, rename-after-publish, or accidentally-published-secrets emergency. **Defaults to recommending deprecate** in every gate; unpublish is opt-in destructive.
+
+**Operations**: `unpublish-version` (single version), `unpublish-all` (`--force`), `rename-redirect` (deprecate old + optionally unpublish eligible old versions; user publishes new name separately).
+
+**Steps it covers**:
+- **Phase 0**: extract operation, target name, version, NEW_NAME for rename.
+- **Phase A**: auth check; **per-version eligibility** via deps.dev `/dependents` API; differentiates 404-not-indexed from API-down; NEW_NAME ownership validation for rename-redirect.
+- **Phase B**: two-gate confirmation. Gate 1 chooses path (deprecate vs unpublish — deprecate recommended). Gate 2 confirms destructive op. Chain-failure handling: if Gate 1's deprecate chain STOPs, surface and offer retry/switch/abort.
+- **Phase C**: auth-window race re-check + per-package file lock; per-version `npm unpublish` with EOTP detection + manual handoff.
+- **Phase D**: registry-propagation retry (3 × 5s); state.json cache cleanup with corruption guard; **auto-cleanup gate** for git tags + GitHub Releases (Yes both / Just tags / No); final summary.
+
+**Hard stops (no override)**: any version with dependents; post-72h with criteria not met (>300 dl/wk OR multiple owners). The skill refuses; manual `npm unpublish` is the explicit escape.
+
+**Triggers from**: *"unpublish @wrong/foo@1.0.0 — typo in the scope"*, *"rename @gagle/eutils to @ncbijs/eutils"*, *"I shipped under the wrong scope"*, *"delete the published v1.0.0"*, *"remove @wrong/foo entirely"*.
 
 ---
 
