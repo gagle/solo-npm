@@ -6,6 +6,14 @@ description: Manage npm dist-tags post-publish — add, remove, repoint, list, o
 
 Manage npm dist-tags after a version is already published — the lever for channel cleanup, rollback (`@latest` repoint after a botched release), opt-in channels (`@canary`, `@experimental`), and bulk portfolio operations.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:dist-tag work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Operations** (add / rm / ls / repoint / cleanup-stale), Phase outline (0 / 0.5 / 0.5b / A / B / C / D), and 2–3 trigger phrases (e.g., *"cleanup stale @next"*, *"repoint @latest to 1.5.2"*). Include the HARD STOP (cannot remove `@latest`). See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 - **Stale `@next` cleanup** after a `/prerelease` PROMOTE leaves `@next` pointing at a superseded beta.

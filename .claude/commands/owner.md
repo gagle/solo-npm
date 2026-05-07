@@ -6,6 +6,14 @@ description: Manage npm package maintainers (owners) at portfolio scale — add,
 
 Manage `npm owner` (maintainers with publish rights) across one package or the entire portfolio.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:owner work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Operations** (ls / add / rm), Phase outline (0 / 0.5 / 0.5b / A / B / C / D), and 2–3 trigger phrases (e.g., *"add @backup-maintainer to all my packages"*, *"who can publish"*). Include the HARD STOP (sole-owner removal). See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 - **Bus-factor mitigation**: add a backup maintainer to every package so you're not the sole gate to publishing.

@@ -6,6 +6,24 @@ description: Unpublish or rename npm packages safely — single version (within 
 
 Recovery skill for the rare-but-real cases where the published artifact itself needs to go away or be redirected — not just deprecated. Use sparingly. **The default-recommended path is `/solo-npm:deprecate` for almost everything**; this skill is the destructive escape hatch with strict safety gates.
 
+## Table of contents
+
+- [When to use](#when-to-use)
+- [Why npm itself recommends deprecate over unpublish](#why-npm-itself-recommends-deprecate-over-unpublish)
+- [Operations](#operations) — `unpublish-version` / `unpublish-all` / `rename-redirect`
+- [Phase −1 — External-tool reliability (H7 canonical pattern)](#phase-1--external-tool-reliability-h7-canonical-pattern) — tool detection, env-vars, atomic state.json, defensive npm parsing, detached-HEAD/worktree/submodule detection, gh pre-flight, lock acquisition, rate-limit + SSL + SIGINT handlers
+- [Phase 0 — Read prompt context](#phase-0--read-prompt-context)
+- [Phase 0.5 — Prompt-extraction validation](#phase-05--prompt-extraction-validation-e1-e2-e3-canonical-from-v0110) — semver / identifier / scope-name regex
+- [Phase 0.5b — Shell-safety hardening](#phase-05b--shell-safety-hardening-tier-4-4-v0130) — reject metacharacters in extracted slots
+- [Phase A — Pre-flight + per-version eligibility](#phase-a--pre-flight--per-version-eligibility) — auth check, deps.dev dependents query, eligibility classification
+- [Phase B — Two-gate confirmation (destructive ops)](#phase-b--two-gate-confirmation-destructive-ops) — Gate 1: deprecate-vs-unpublish; Gate 2: confirm destructive
+- [Phase C — Execute](#phase-c--execute) — auth-race re-check, lock, per-version unpublish
+- [Phase D — Post-execution](#phase-d--post-execution) — registry verify with retry, cache cleanup, auto-cleanup gate for git tag + GitHub Release
+- [Hard stops (no override)](#hard-stops-no-override) — dependents > 0; post-72h criteria not met
+- [What this skill does NOT do](#what-this-skill-does-not-do)
+- [Composition](#composition)
+- [Concurrency / locking](#concurrency--locking)
+
 ## When to use
 
 | Scenario | Right tool |
@@ -34,6 +52,56 @@ This skill **defaults to recommending deprecate** in every gate. Unpublish is op
 | `unpublish-version` | Remove a single version (e.g., `@scope/foo@1.0.0`); subject to eligibility |
 | `unpublish-all` | Remove the entire package across all versions (`--force`); subject to eligibility |
 | `rename-redirect` | Multi-step: deprecate old name with a redirect message + (optional) unpublish old eligible versions. The new package gets published separately via `/init` or `/release` |
+
+## Phase −0 — Help mode (canonical from v0.16.0)
+
+Before any execution, check whether the user is asking for **help** rather than asking to **run** the skill. Help-mode trigger phrases (case-insensitive substring match on the user's prompt):
+
+- `--help` / `-h` / `--usage`
+- `"how does /solo-npm:<skill> work"`
+- `"how do I use /solo-npm:<skill>"`
+- `"explain /solo-npm:<skill>"`
+- `"what does /solo-npm:<skill> do"`
+
+When help mode triggers, surface a tight 1-screen summary INSTEAD of running Phase 0 → Phase A. Format:
+
+```
+/solo-npm:unpublish — Unpublish or rename npm packages safely.
+
+OPERATIONS
+  unpublish-version    remove a single version (e.g. @scope/pkg@1.0.0)
+  unpublish-all        remove the entire package across all versions (--force)
+  rename-redirect      deprecate old name with redirect message + (optional) unpublish eligible old versions
+
+PHASES
+  Phase −1     external-tool reliability pre-flight (canonical H7)
+  Phase 0      read prompt context (extract OPERATION, NAME, VERSION, NEW_NAME)
+  Phase 0.5    regex validation (semver, scope/name)
+  Phase 0.5b   shell-safety hardening
+  Phase A      pre-flight + per-version eligibility (auth, deps.dev dependents, npm policy criteria)
+  Phase B      two-gate destructive confirmation
+  Phase C      execute
+  Phase D      verify + cleanup gate (git tag + GitHub Release)
+
+EXAMPLES
+  "unpublish @gagle/foo@1.0.0 — typo in scope"
+  "rename @gagle/eutils to @ncbijs/eutils"
+  "I shipped @wrong/foo by mistake — wipe it"
+
+DEFAULT-RECOMMENDED PATH
+  /solo-npm:deprecate — npm's preferred recovery path. /unpublish is the destructive escape hatch.
+
+HARD STOPS (no override)
+  - any version has dependents (per deps.dev)
+  - past 72h AND criteria not met (>300 dl/wk OR multiple owners)
+
+For the full skill body: cat .claude/commands/unpublish.md  (or scroll up in the marketplace install).
+For the README user-facing tour: see /solo-npm:unpublish detail subsection in README.md.
+```
+
+After surfacing the help block, **STOP** — don't proceed to Phase 0. Re-invocation without `--help` runs the skill normally.
+
+This is the **canonical** Phase −0 pattern; sibling skills reference it and surface their own skill-specific OPERATIONS / PHASES / EXAMPLES / HARD STOPS sections following the same template.
 
 ## Phase −1 — External-tool reliability (H7 canonical pattern)
 

@@ -9,6 +9,14 @@ and risky. This skill orchestrates them with strict guardrails:
 discover → classify → plan → apply (verify each batch) → commit →
 rollback on failure.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:deps work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Operations** (cve-tier-1 / safe / all / specific-target), Phase outline (0 / 1 / 2 / 3 / 4 / 5 / 6 / 7), and 2–3 trigger phrases (e.g., *"upgrade typescript to v6"*, *"safe updates only"*, *"fix CVEs"*). Note the verify-gated rollback model. See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## Phase 0 — Read prompt context
 
 Scan the user's invoking prompt for hints that pre-fill subsequent decisions:

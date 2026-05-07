@@ -8,6 +8,26 @@ The umbrella skill for fresh-repo bootstrap. Scaffolds the GitHub side,
 gates on first publish, then composes with `/solo-npm:trust` for the
 npm side. Idempotent — re-invoke any time, only creates what's missing.
 
+## Table of contents
+
+- [Who this is for](#who-this-is-for) / [How it works](#how-it-works)
+- [Error-handling patterns](#error-handling-patterns-h1-h2-h3-h6-from-unpublish-reference) — H1/H2/H3/H6 from `/unpublish` reference
+- [Phase 1 — Scaffold](#phase-1--scaffold) — package.json updates, release.yml, .nvmrc, wrappers, settings.json, state.json, **Phase 1d pkg-check validation loop**, **Phase 1e commit + push gate**
+- [Phase 2 — First-publish gate](#phase-2--first-publish-gate-guided-in-v070) — npm whoami handoff, AskUserQuestion *publish-now / manual / abort*, **Phase 2c H1 OTP detection + H3 auth-race re-check**
+- [Phase 3 — Configure OIDC trust](#phase-3--configure-oidc-trust) — chains into `/solo-npm:trust`
+- [Phase 4 — Done](#phase-4--done)
+- [Refresh-only mode (`--refresh-yml`)](#refresh-only-mode---refresh-yml) — surgical updates to existing release.yml
+- [Idempotency contract](#idempotency-contract)
+- [What this skill does NOT do](#what-this-skill-does-not-do)
+
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:init work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Operations** (full bootstrap / `--refresh-yml` mode), Phase outline (1a–1e scaffold / 2 first-publish gate / 3 trust chain / 4 done), and 2–3 trigger phrases (e.g., *"integrate solo-npm into this repo"*, *"bootstrap"*). Include the load-bearing Phase 1d pkg-check validation loop note. See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## Who this is for
 
 You have a repo (existing or new) and want to add the opinionated

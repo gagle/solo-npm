@@ -9,6 +9,14 @@ Interactive wizard for configuring npm OIDC Trusted Publishing. The
 configuration; this skill orchestrates the end-to-end flow:
 gather inputs → confirm → handle manual steps → execute → verify.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:trust work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Phases** (Pre-flight CLI resolution / Phase 1 discover / Phase 2 execute → auth gate → dry-run → configure → verify), and 2–3 trigger phrases (e.g., *"configure trust for my packages"*, *"setup OIDC"*). Note `/trust` orchestrates the `npm-trust` CLI (pinned to `^0.9` as of v0.16.0) — the CLI is the canonical implementation; this skill is the AI wizard wrapper. See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 - First-time OIDC trust setup for a repo's published packages.
@@ -37,14 +45,12 @@ invocation in every step below. Try in this order and stop at the first match:
    ```
 4. **Registry fetch (last resort).** Otherwise fall back to:
    ```
-   <CLI> = npx -y npm-trust@^0.4
+   <CLI> = npx -y npm-trust@^0.9
    ```
-   **Pinned to major 0.4** (D3 from v0.11.0 strict-safety pass). The skill body assumes `--auto`, `--doctor`, and `--json` flags as introduced/finalized in npm-trust 0.4.x. Using `@latest` would fetch whatever is current on npm and could silently regress flag availability. Bump this pin explicitly when solo-npm is tested against a newer npm-trust major.
-
-   **Pin status as of v0.15.0**: `^0.4` is the **tested baseline**. npm-trust has shipped 0.5.x – 0.9.x since this pin was set; those majors are not yet verified against this skill body's flag assumptions. The maintainer (also npm-trust's author) will bump this pin in a follow-up patch once the 0.9.x CLI surface is verified to still expose `--auto`/`--doctor`/`--json`. Until then, pinning conservatively is safer than tracking @latest.
+   **Pinned to major 0.9** (D3 from v0.11.0 strict-safety pass; bumped from `^0.4` in v0.16.0 after explicit verification against npm-trust 0.9.1). The skill body uses `--auto`, `--doctor`, `--json`, `--list`, `--only-new`, `--dry-run`, `--repo`, `--workflow`, `--scope`, `--packages` — all present and shape-stable in 0.9.x per the maintainer-verified compatibility check that shipped with npm-trust 0.9.1's CHANGELOG. Using `@latest` would fetch whatever is current on npm and could silently regress flag availability. Bump this pin explicitly when solo-npm is tested against a newer npm-trust major.
 
 If your shell's `npx` form rejects the package (some npm 11 setups require
-`npm exec --` instead), substitute `npm exec -- npm-trust@^0.4` for
+`npm exec --` instead), substitute `npm exec -- npm-trust@^0.9` for
 the npx fallback.
 
 Use the chosen invocation in **every** subsequent step. Below, `<CLI>` is the
@@ -60,7 +66,7 @@ placeholder — replace mentally.
 
 If the result is `TOO_OLD`, the resolved binary predates `--auto` (added in
 v0.2.0). **Stop** and ask the user to upgrade with
-`npm i -g npm-trust@^0.4` (or remove the cached version that resolved).
+`npm i -g npm-trust@^0.9` (or remove the cached version that resolved).
 
 ## Phase 1 — Discover (one call when --doctor is supported)
 

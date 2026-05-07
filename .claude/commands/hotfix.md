@@ -6,6 +6,14 @@ description: Hotfix a previous stable major (e.g., v1.5.0 → v1.5.1) while main
 
 Backward maintenance hotfix on a `<major>.x` branch. AI-driven end-to-end: the user describes the fix in chat (or in the invoking prompt); the agent creates/checks-out the maintenance branch, makes the fix, runs `/verify`, releases the patch with the correct dist-tag, returns to main.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:hotfix work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Operations** (cherry-pick mode / describe-the-fix mode), Phase outline (0 / 0.5 / 0.5b / A / B / C / D / E / F / F.5 / G), and 2–3 trigger phrases (e.g., *"hotfix v1 — rate limiter bug"*, *"backport SHA abc123 to v1.x"*). See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 - `main` is on a newer major (`2.0.0-beta.x` or already-promoted `2.0.0`).

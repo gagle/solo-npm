@@ -7,6 +7,14 @@ description: One-page portfolio dashboard across all your published packages —
 Read-only snapshot of your npm portfolio. Replaces the "open 5 browser
 tabs to check on my packages" morning ritual with one command.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:status work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Phases** (Phase 1 discover / Phase 2 fan-out fetches / Phase 3 render / `--fresh` flag), and 2–3 trigger phrases (e.g., *"how are my packages doing"*, *"portfolio dashboard"*, *"any CVEs across the portfolio?"*). Note this is read-only — no destructive ops, no gates. See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 - Daily session start: "what's my portfolio doing?"

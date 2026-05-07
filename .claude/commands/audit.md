@@ -8,6 +8,14 @@ Read-only security audit with risk triage. The default `npm audit` /
 `pnpm audit` output is a firehose; this skill classifies it into
 actionable tiers so a solo dev knows what to fix today vs. what to defer.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:audit work"` / `"how do I use /solo-npm:audit"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from this skill's frontmatter description, the **Phase 1–6** outline below, and 2–3 representative trigger phrases (e.g., *"audit my deps"*, *"any CVEs?"*). Format: `OPERATIONS / PHASES / EXAMPLES / HARD STOPS` (omit sections that don't apply). See `/unpublish` Phase −0 for the canonical example output.
+
+After surfacing, **STOP** — don't run Phase 1 onward. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 - Monthly maintenance ritual.

@@ -10,6 +10,31 @@ description: Universal release entry point — tag-triggered npm release with OI
 > Invoke `/solo-npm:release` directly only when you want the unmodified
 > baseline.
 
+## Table of contents
+
+- [Principle: skills are operators, not advisors](#principle-skills-are-operators-not-advisors)
+- [Manual overrides (power-user escape hatches)](#manual-overrides-power-user-escape-hatches)
+- [Phase 0 — Read prompt context](#phase-0--read-prompt-context)
+- [Who this is for](#who-this-is-for) / [How it works](#how-it-works) / [Auto-detection](#auto-detection)
+- [Phase 0.5 — Prompt-extraction validation](#phase-05--prompt-extraction-validation-e1-e3-from-v0110)
+- [Phase 0.5b — Shell-safety hardening](#phase-05b--shell-safety-hardening-tier-4-4-from-v0130)
+- [Phase A — Pre-flight](#phase-a--pre-flight) — working tree, verify, trust cache, audit cache
+- [Phase B — Plan and confirm](#phase-b--plan-and-confirm) — collect commits, derive version, render plan, AskUserQuestion
+- [Phase C.0 — Error-handling patterns](#phase-c0--error-handling-patterns-h2-h3-h4-h6-from-unpublish-reference) — H2/H3/H4/H6 references
+- [Phase C.0a — H5 concurrent-release lock](#phase-c0a--h5-concurrent-release-lock-v0110)
+- [Phase C — Execute](#phase-c--execute) — CHANGELOG, commit, push (with rejection categorization), tag (with collision pre-flight), CI watch, registry verify, GitHub Release (warn-not-block), bundle-size cache update
+- [Phase G — Post-major deprecation chain (gated)](#phase-g--post-major-deprecation-chain-gated)
+- [Failure modes and recovery](#failure-modes-and-recovery)
+- [What this skill does NOT do](#what-this-skill-does-not-do)
+
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:release work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Phases** outline (0 / 0.5 / 0.5b / A.1–A.5 / B / C.0 / C.0a / C.1–C.7.6 / G), and 2–3 trigger phrases (e.g., *"ship it"*, *"release this"*, *"time to release v0.5.4"*). Note the auto-chain to `/prerelease` on pre-release version + post-major deprecate chain Phase G. See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## Principle: skills are operators, not advisors
 
 When this skill detects a fixable precondition (missing trust, missing

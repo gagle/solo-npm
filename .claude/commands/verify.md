@@ -12,6 +12,14 @@ description: Run quality gates — lint + typecheck + test + build + pkg-check (
 Run the verification gates for this repo. Halt on the first failure;
 surface the error to the user.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:verify work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Steps** outline (Step 1 lint / 2 typecheck / 3 test / 4 build / 5 pkg-check Tiers 1–4) and the `--pkg-check-only` mode, plus 2–3 trigger phrases (e.g., *"verify"*, *"are there any secrets in my package"*, *"will my tarball ship correctly"*). Note Tier 3 secrets HARD STOP applies in ALL invocation contexts. See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## Auto-detection
 
 Detect the package manager and verification commands automatically:

@@ -6,6 +6,14 @@ description: Mark npm package versions as deprecated (or undeprecate) with a cus
 
 Retire a published version (or version range) cleanly with a `npm WARN` message that surfaces during `npm install`. Reversible. Safer than `npm unpublish` (which has a 24-hour hard window and breaks consumer lockfiles).
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:deprecate work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Operations** (deprecate / undeprecate), Phase outline (0 / A / B / C / D), and 2–3 trigger phrases (e.g., *"deprecate all 1.x"*, *"mark 1.6.0 as do-not-use"*). Include the **HARD STOPS** (unbounded range, empty message on deprecate, message > 1024 chars, no matching versions, all-already-in-target-state). See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 - **Post-major-release EOL**: just shipped `2.0.0`; mark all `1.x` deprecated with a "migrate to v2" message.

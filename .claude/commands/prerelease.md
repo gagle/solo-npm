@@ -6,6 +6,14 @@ description: Pre-release lifecycle — start a new pre-release line (alpha/beta/
 
 Pre-release lifecycle operations: **start** a new pre-release line, **bump** the counter on an in-progress line, or **promote** a pre-release to stable. AI-driven end-to-end: the user expresses intent via prompt; the agent handles every code/git operation.
 
+## Phase −0 — Help mode (per `/unpublish` canonical)
+
+If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:prerelease work"` / similar, surface a help summary **INSTEAD** of running the skill.
+
+Synthesize from the **Operations** (START / BUMP / PROMOTE), Phase outline (0 / 0.5 / 0.5b / A / B / C / D / E), and 2–3 trigger phrases (e.g., *"start a beta for v2"*, *"ship the next beta"*, *"promote v2 to stable"*). Include the Phase 0.5 IDENTIFIER whitelist (alpha/beta/rc/canary/experimental/next/preview/edge). See `/unpublish` Phase −0 for canonical format.
+
+After surfacing, **STOP**. Re-invocation without help triggers runs normally.
+
 ## When to use
 
 You want to publish a pre-release version (e.g., `1.1.0-beta.1`) so opt-in users can install via `npm i pkg@next` while users on `npm i pkg` (the `latest` channel) stay undisturbed.

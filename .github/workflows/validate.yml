@@ -1,0 +1,130 @@
+name: Validate plugin manifests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: marketplace.json + plugin.json schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Validate JSON parses
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('.claude-plugin/plugin.json', 'utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('.claude-plugin/marketplace.json', 'utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))"
+
+      - name: Validate plugin.json required fields
+        run: |
+          node -e "
+            const fs = require('fs');
+            const plugin = JSON.parse(fs.readFileSync('.claude-plugin/plugin.json', 'utf8'));
+            const required = ['name', 'description', 'version', 'author', 'license'];
+            const missing = required.filter(k => !plugin[k]);
+            if (missing.length) {
+              console.error('plugin.json missing required fields:', missing);
+              process.exit(1);
+            }
+            // Author shape check
+            if (typeof plugin.author === 'object' && !plugin.author.name) {
+              console.error('plugin.json author object missing .name');
+              process.exit(1);
+            }
+            console.log('plugin.json: OK');
+          "
+
+      - name: Validate marketplace.json required fields
+        run: |
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('.claude-plugin/marketplace.json', 'utf8'));
+            const required = ['name', 'owner', 'plugins'];
+            const missing = required.filter(k => !m[k]);
+            if (missing.length) {
+              console.error('marketplace.json missing required fields:', missing);
+              process.exit(1);
+            }
+            if (!Array.isArray(m.plugins) || m.plugins.length === 0) {
+              console.error('marketplace.json plugins must be a non-empty array');
+              process.exit(1);
+            }
+            for (const p of m.plugins) {
+              if (!p.name || !p.source || !p.description) {
+                console.error('plugin entry missing name/source/description:', p);
+                process.exit(1);
+              }
+            }
+            console.log('marketplace.json: OK');
+          "
+
+      - name: Verify plugin.json + package.json version match
+        run: |
+          node -e "
+            const fs = require('fs');
+            const plugin = JSON.parse(fs.readFileSync('.claude-plugin/plugin.json', 'utf8'));
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            if (plugin.version !== pkg.version) {
+              console.error('plugin.json version (' + plugin.version + ') != package.json version (' + pkg.version + ')');
+              process.exit(1);
+            }
+            console.log('versions aligned: ' + pkg.version);
+          "
+
+      - name: Verify plugin.json + package.json description match
+        run: |
+          node -e "
+            const fs = require('fs');
+            const plugin = JSON.parse(fs.readFileSync('.claude-plugin/plugin.json', 'utf8'));
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            if (plugin.description !== pkg.description) {
+              console.error('plugin.json description != package.json description');
+              console.error('plugin.json:  ' + plugin.description);
+              console.error('package.json: ' + pkg.description);
+              process.exit(1);
+            }
+            console.log('descriptions aligned');
+          "
+
+      - name: Check every .claude/commands/*.md has frontmatter description
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const dir = '.claude/commands';
+            const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+            const errors = [];
+            for (const file of files) {
+              const body = fs.readFileSync(path.join(dir, file), 'utf8');
+              if (!body.startsWith('---\n')) {
+                errors.push(file + ': missing frontmatter');
+                continue;
+              }
+              const end = body.indexOf('\n---\n', 4);
+              if (end === -1) {
+                errors.push(file + ': unterminated frontmatter');
+                continue;
+              }
+              const fm = body.slice(4, end);
+              if (!/^description:/m.test(fm)) {
+                errors.push(file + ': frontmatter missing description: field');
+              }
+            }
+            if (errors.length) {
+              console.error('Skill frontmatter validation failed:');
+              errors.forEach(e => console.error('  ' + e));
+              process.exit(1);
+            }
+            console.log('skill frontmatter: ' + files.length + ' files OK');
+          "
