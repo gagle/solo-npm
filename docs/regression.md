@@ -94,7 +94,8 @@ Each scenario has:
 **Expected 2**:
 - /prerelease detects pre-release state.
 - AskUserQuestion gates: pick Promote → publishes `2.0.0` to `@latest`.
-- Phase E AskUserQuestion: *"Remove stale @next now? (currently points at 2.0.0-beta.1, but @latest is now 2.0.0)"*.
+- **Phase E gate is PROMOTE-only conditional** (v0.15.0 clarification): the "Remove stale @next?" gate fires ONLY when the operation is PROMOTE; START and BUMP do not trigger it (cleanup wouldn't make sense — the @next line is intentionally active).
+- For PROMOTE: Phase E AskUserQuestion *"Remove stale @next now? (currently points at 2.0.0-beta.1, but @latest is now 2.0.0)"*.
 - User picks Yes → chains to `/solo-npm:dist-tag cleanup-stale`.
 - /dist-tag removes `@next` from affected packages.
 
@@ -116,11 +117,11 @@ Each scenario has:
 - Phase D.2 (describe-the-fix): if agent-skills installed, delegates; otherwise applies fix directly.
 - /verify passes.
 - Phase E.3: *Proceed with v1.5.1 (publishes to @v1) / Abort*. User Proceeds.
-- Phase E.4: sets `publishConfig.tag = "v1"`, commits, tags, pushes, CI publishes.
+- Phase E.4: sets `publishConfig.tag = "v1"` via **atomic write** (per H7 / Phase −1.4: write to package.json.tmp + rename — a killed-mid-write process never leaves a corrupt package.json), commits, tags, pushes, CI publishes.
 - Phase E.5: `npm view <pkg> dist-tags.v1 === "1.5.1"`; `dist-tags.latest` unchanged at `2.0.0`.
 - Phase E.6: GitHub Release with `--latest=false --target 1.x`.
 - Phase F: `git checkout main`.
-- Phase F.5: AskUserQuestion *Forward-port to main? Yes ship / Yes cherry-pick only / No skip*.
+- **Phase F.5 forward-port is gated by AskUserQuestion EVEN when cherry-pick succeeds cleanly** (v0.15.0 clarification — the gate isn't conditional on conflict; the user is always asked because forward-port is a deliberate decision): *Forward-port to main? Yes ship / Yes cherry-pick only / No skip*.
 - User picks "Yes — cherry-pick and ship" → cherry-pick succeeds (main has same code path) → chains to `/release` → ships `2.0.1` to `@latest`.
 
 **Verify**:
@@ -159,11 +160,13 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Trigger 1**: *"repoint @latest to 1.5.2 — 1.6.0 has a bug"*
 
-**Expected**:
+**Expected** (current as of v0.15.0):
 - /dist-tag Phase 0: `OPERATION=repoint, TAG=latest, VERSION=1.5.2, SCOPE=current`.
+- Phase 0.5 regex validation passes (TAG, VERSION, SCOPE all match their regexes); Phase 0.5b shell-safety passes (no metacharacters).
 - Phase A: auth check (npm whoami). If logged out, foolproof handoff.
 - Phase B: render *Repoint @latest from 1.6.0 → 1.5.2 / Abort*. User Proceeds.
-- Phase C: `npm dist-tag add <pkg>@1.5.2 latest`.
+- **Phase C.0a** (v0.11.0+): H3 auth-race re-check (re-runs `npm whoami` since user paused at the Phase B gate); H5 lock acquisition at `.solo-npm/locks/<pkg>.lock` with stale-PID auto-cleanup.
+- Phase C: `npm dist-tag add <pkg>@1.5.2 latest`. EOTP/H1 manual handoff fires if 2FA-on-writes is enabled.
 
 **Verify**: `npm view <pkg> dist-tags.latest` returns `1.5.2`.
 
@@ -171,9 +174,11 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Expected**:
 - /deprecate Phase 0: `OPERATION=deprecate, RANGE=1.6.0, MESSAGE` derived.
+- Phase 0.5 + 0.5b pass.
 - Phase A pre-flight: `RANGE` is concrete (not unbounded), MESSAGE non-empty → passes.
-- Phase B: render plan + Proceed gate.
-- Phase C: `npm deprecate <pkg>@1.6.0 "<msg>"`.
+- Phase B: render plan + Proceed gate (single gate — `/deprecate` is non-destructive enough that one gate suffices; the dual-gate pattern is reserved for `/unpublish`).
+- **Phase C.0a** (v0.11.0+): H3 auth-race re-check + H5 lock acquisition (same canonical pattern as `/dist-tag`).
+- Phase C: `npm deprecate <pkg>@1.6.0 "<msg>"`. MESSAGE is passed via env-var (Phase 0.5b convention) so any benign parens/quotes inside don't disrupt shell interpolation.
 
 **Verify**: `npm view <pkg>@1.6.0 deprecated` returns the message.
 
@@ -217,13 +222,18 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Trigger**: *"verify"*
 
-**Expected**:
+**Expected** (current as of v0.15.0):
 - /verify Steps 1–4 (lint/typecheck/test/build) pass.
 - Step 5 Tier 1 (publint), Tier 2 (manual), Tier 3 (pack-audit) pass.
-- Step 5 Tier 4 detects the regression: prior baseline was X bytes; current is Y bytes; delta > 25% → warning.
+- Step 5 Tier 4 detects the regression: prior baseline was X bytes; current is Y bytes; delta > 25% → warning. Cache lookup uses `state.json#pkgCheck.lastSize["<pkg>@<prior-version>"]`; first-run packages have no baseline (cache populates organically over releases — silent no-op on first run, not a warning).
 - Top-5-largest-files breakdown surfaced.
 
-**Verify**: warning includes file paths and sizes; user can identify the bloat source.
+**Cache mechanics** (v0.11.0+, clarified v0.15.0):
+- Subsequent `/release` Phase C.7.6 writes the just-shipped `unpackedSize` to `state.json#pkgCheck.lastSize` via **atomic write** (per H7 / Phase −1.4: `.solo-npm/state.json.tmp` + `fs.renameSync()`).
+- Cache is **trimmed to the last 3 versions per package** to keep state.json bounded — older entries deleted on each new write.
+- For monorepos: cache is keyed `<pkg-name>@<version>`, so per-package histories accumulate independently.
+
+**Verify**: warning includes file paths and sizes; user can identify the bloat source. After a successful `/release`, `state.json#pkgCheck.lastSize["<pkg>@<new-version>"]` is set; older entries (>3 versions back per package) are pruned.
 
 ### S9 — Stale @next warning + cleanup chain
 
@@ -272,13 +282,17 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Trigger**: *"how are my packages doing?"*
 
-**Expected**:
-- /status reads cached state.json without making fresh npm calls (hot path).
-- Trust state column populated from cache.
-- Portfolio health section populated from cache.
-- Maintenance lines populated from local git.
+**Expected** (current as of v0.15.0 — Phase A.3 cache logic clarified):
+- /status reads cached state.json with **conditional logic** (not a single "hot path"):
+  - **Hot path**: cache fresh (`now - lastFullCheck < ttlDays`) AND no new packages detected (workspace.packages set ⊆ cache.trust.configured) → **zero npm calls** for trust state. Pure cache render.
+  - **Targeted path**: cache fresh AND new packages detected → run `npm-trust --doctor` only on the deltas (new packages), merge results into cache.
+  - **Cold path**: cache stale (`now - lastFullCheck > ttlDays`) → full `npm-trust --doctor` against all packages, refresh cache wholesale.
+  - On fresh-machine clone with committed `state.json`: cache is fresh + no new packages typically → hot path. Dashboard renders without npm calls.
+- Trust state column populated from cache (whichever path).
+- Portfolio health section populated from `state.json#audit` + `state.json#pkgCheck` cache.
+- Maintenance lines populated from local git (`git ls-remote --heads origin "*.x"`).
 
-**Verify**: dashboard renders quickly; no rate-limit-style delays.
+**Verify**: dashboard renders quickly; no rate-limit-style delays. The conditional path that fires depends on cache state vs workspace state — for a typical fresh-clone-with-committed-state.json, hot path fires.
 
 ### S13 — Wrong-name unpublish + auto-cleanup (happy path within 72h)
 

@@ -41,6 +41,8 @@ invocation in every step below. Try in this order and stop at the first match:
    ```
    **Pinned to major 0.4** (D3 from v0.11.0 strict-safety pass). The skill body assumes `--auto`, `--doctor`, and `--json` flags as introduced/finalized in npm-trust 0.4.x. Using `@latest` would fetch whatever is current on npm and could silently regress flag availability. Bump this pin explicitly when solo-npm is tested against a newer npm-trust major.
 
+   **Pin status as of v0.15.0**: `^0.4` is the **tested baseline**. npm-trust has shipped 0.5.x – 0.9.x since this pin was set; those majors are not yet verified against this skill body's flag assumptions. The maintainer (also npm-trust's author) will bump this pin in a follow-up patch once the 0.9.x CLI surface is verified to still expose `--auto`/`--doctor`/`--json`. Until then, pinning conservatively is safer than tracking @latest.
+
 If your shell's `npx` form rejects the package (some npm 11 setups require
 `npm exec --` instead), substitute `npm exec -- npm-trust@^0.4` for
 the npx fallback.

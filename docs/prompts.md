@@ -2,6 +2,10 @@
 
 Real-world prompts a solo dev (or AI agent) might type, and which solo-npm command they trigger. Use this as a quick reference for what the skills are listening for, and as inspiration for how minimal a prompt can be while still triggering the right flow.
 
+> **About cross-cutting safeguards** (v0.10.1+): every skill listed below applies the universal Phase −1 pre-flight (tool detection, `.gitconfig` user check, detached HEAD / worktree / submodule detection, atomic state.json writes, lock acquisition) plus the H1–H8 error-handling pattern catalog (OTP, cache corruption, auth-race, registry propagation lag, concurrent lock, chain-failure, tool reliability, rate-limit backoff). Plus Phase 0.5 regex validation (semver, identifier, scope/name) and Phase 0.5b shell-safety (rejects metacharacters in extracted slots).
+>
+> These aren't repeated per-skill below — see the [README "Hardening + stability"](../README.md#hardening--stability) section for the full list of user-visible behaviors. The compound workflows below mention specific safeguards only where they materially shape the scenario.
+
 ## Per-command prompts
 
 ### `/solo-npm:init` — bootstrap a fresh repo
@@ -181,13 +185,18 @@ You:  [accept install prompts]
 You:  Now bootstrap.
        (agent runs /solo-npm:init → Phase 1 scaffolds release.yml + publishConfig +
         wrappers + cache → Phase 1d invokes /verify --pkg-check-only to validate the
-        manifest end-to-end → Phase 2 detects PACKAGE_NOT_PUBLISHED →
+        manifest end-to-end with auto-fix loop on derivable fields, HARD STOP on
+        secrets, H6 retry/skip/abort gate on /verify failure → Phase 2 detects
+        PACKAGE_NOT_PUBLISHED →
         npm whoami check + foolproof npm login handoff if needed →
         AskUserQuestion: "Run npm publish --provenance=false --access public now to
         claim the package name `<NAME>`?")
 You:  [pick "Yes — publish now"]
-       (agent runs npm publish agent-side → publish succeeds →
-        Phase 3 chains into /solo-npm:trust without re-invocation)
+       (agent runs Phase 2c: re-checks npm whoami immediately before publish per H3
+        auth-race convention — detects stale session if user lingered at the gate.
+        Then runs npm publish agent-side → publish succeeds →
+        Phase 3 chains into /solo-npm:trust with H6 chain-failure recovery if trust
+        setup STOPs)
 You:  [accept "Configure trust for 1 package?" prompt; do the npm web 2FA]
        (agent: trust complete; cache populated; init Phase 4 reports done)
 You:  Now ship the first real release.

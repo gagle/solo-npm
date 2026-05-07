@@ -1,5 +1,56 @@
 # Changelog
 
+## v0.15.0 — 6-item polish consolidation (regression drift, prompts refresh, descriptions, CLAUDE.md, outreach, pin status)
+
+Polish-only release. No behavioral change for consumers; targets the 6 nice-to-have items surveyed after v0.14.0 closed the maintainer-owned docs items on the v1.0.0 punch list.
+
+### What shipped
+
+**Item 1 — `docs/regression.md` minor drift fixes** (S3, S4, S6, S8, S12)
+- S3: `/prerelease` Phase E cleanup gate is PROMOTE-only conditional (clarified).
+- S4: `/hotfix` E.1 publishConfig.tag uses atomic-write per H7; F.5 forward-port is gated even on cherry-pick success.
+- S6: `/dist-tag` and `/deprecate` Phase C.0a now apply H3 auth-race re-check + H5 lock + Phase 0.5/0.5b validation; `/deprecate` uses single-gate plan-approve (dual-gate is `/unpublish`-specific).
+- S8: bundle-size cache uses atomic-write + 3-version trim; first-run silent-baseline behavior documented.
+- S12: Phase A.3 hot/cold/targeted-path conditional logic explained.
+
+Closes the "minor drift" backlog from the v0.14.0 audit.
+
+**Item 2 — `docs/prompts.md` staleness refresh**
+- Added a top-of-doc pointer to README's "Hardening + stability" section so the cross-cutting safeguards (Phase −1, H1–H8, Phase 0.5/0.5b) aren't repeated 13 times per skill.
+- Day 1 compound workflow now mentions Phase 1d auto-fix loop + secrets HARD STOP + H6 retry gate, plus Phase 2c H3 auth-race re-check before publish.
+- Existing scenarios that were already detailed (Wrong-name fast cleanup, Rename after publish) needed no further changes.
+
+**Item 3 — `unpublish` added to comma-separated description in 3 files**
+- `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` descriptions now list 9 npm commands (added `unpublish`). Was: 8 commands. The description is consumer-visible in the marketplace listing.
+
+**Item 4 — Project-level `CLAUDE.md`**
+- New `CLAUDE.md` at the repo root orients Claude when working ON solo-npm (vs working IN consumer repos that USE solo-npm). Mostly references CONTRIBUTING.md "Patterns + conventions" rather than duplicating; gives Claude a direct entry point + reading list when contributing.
+- Removed the `(when added)` caveat from CONTRIBUTING.md line 14 since CLAUDE.md now exists.
+
+**Item 5 — `docs/outreach.md` v1.0.0 outreach material**
+- New maintainer-only artifact with reusable templates: HN-style "Show HN" post, r/node casual post, ~30-second elevator pitch, awesome-claude-code submission, v1.0.0 announcement post for GitHub Discussions/Releases.
+- Clearly labeled "maintainer-only artifact, not consumer-facing" at the top.
+- Reduces friction at v1.0.0 declaration time — copy + paste + edit, don't write from scratch under deadline pressure.
+
+**Item 6 — npm-trust pin status comment in `/trust`**
+- Pre-flight verification revealed npm-trust shipped 0.5.x–0.9.x since the v0.13.0 D3 pin was set to `^0.4`. publint pin (`@0.3`) is still current.
+- Conservative path: kept the `^0.4` pin; added an inline comment in `/trust` Pre-flight section naming "0.4.x as tested baseline; newer majors require explicit verification before bumping". Defers the actual bump to a future v0.15.1 patch where the maintainer (also npm-trust's author) verifies the 0.9.x CLI surface.
+
+### Why minor (not patch)
+
+Per user's explicit direction: "do points 1 to 6 in the same minor version bump". Conventional commits would suggest patch (pure docs + config-metadata changes); minor honors the user's preference for visibility.
+
+### Punch list status (unchanged)
+
+v0.15.0 is pure polish — doesn't move v1.0.0 readiness. Same 3 items remain:
+1. Run regression checklist S1–S33 end-to-end at least once (maintainer; requires real `npm publish`)
+2. Wider adoption signal (external)
+3. Skill-spec drift caught once via regression checklist (temporal)
+
+### Upgrading
+
+`/reload-plugins` after marketplace update. No behavioral change. The new `CLAUDE.md` only applies when working IN this repo; consumers don't see it.
+
 ## v0.14.0 — docs alignment pass (CONTRIBUTING + README + regression catch-up)
 
 Closes 3 of the 4 maintainer-owned items on the v1.0.0 punch list. No code changes; pure docs alignment.

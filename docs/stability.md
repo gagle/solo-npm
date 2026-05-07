@@ -1,6 +1,6 @@
 # Stability roadmap — toward v1.0.0
 
-> Status: solo-npm is in **v0.x experimental** but **code-side complete** as of v0.13.0 and **docs-aligned** as of v0.14.0. This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
+> Status: solo-npm is in **v0.x experimental** but **code-side complete** as of v0.13.0 and **docs-aligned** as of v0.14.0; v0.15.0 added project-level `CLAUDE.md`, outreach-templates artifact, and minor regression/prompts drift fixes. This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
 
 ## Why this doc exists
 

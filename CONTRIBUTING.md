@@ -11,7 +11,7 @@ directly. To request a change,
 or start a
 [discussion](https://github.com/gagle/solo-npm/discussions);
 the maintainer picks it up and implements it through Claude Code
-following the conventions in `CLAUDE.md` (when added) and
+following the conventions in [`CLAUDE.md`](./CLAUDE.md) and
 `.claude/`.
 
 ## Why
