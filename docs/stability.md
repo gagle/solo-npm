@@ -1,6 +1,6 @@
 # Stability roadmap — toward v1.0.0
 
-> Status: solo-npm is in **v0.x experimental** but **code-side complete** as of v0.13.0. This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
+> Status: solo-npm is in **v0.x experimental** but **code-side complete** as of v0.13.0 and **docs-aligned** as of v0.14.0. This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
 
 ## Why this doc exists
 
@@ -36,7 +36,7 @@ When we ship v1.0.0, the following become **stable** and require a v2.0.0 bump t
 | **Skill description trigger phrases** that exist in v1.0.0 | New trigger phrases added |
 | `/init` **scaffold artifact set** (`release.yml` shape, `publishConfig` fields, wrapper templates) | Internal phase organization changes (e.g., Phase 1c → 1d numbering) |
 | External tool dependencies (publint pinned major; `npm-trust` required; `gh` optional) | Bump pinned tool minor versions |
-| The **convention** documented in CONTRIBUTING.md (phase naming, AskUserQuestion shape, etc.) | Add new conventions for new patterns |
+| The **conventions** documented in [`CONTRIBUTING.md`](../CONTRIBUTING.md) (phase numbering `−1`/`0`/`0.5`/`0.5b`/`A`–`G`; H1–H8 error-handling pattern catalog; npm CLI BCL convention; state.json read-modify-write + atomic writes; lock-file convention at `.solo-npm/locks/<sanitized>.lock`; AskUserQuestion shape) | Add new conventions for new patterns; refine existing wording for clarity |
 
 What requires **v2.0.0**:
 
