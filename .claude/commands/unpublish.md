@@ -321,7 +321,7 @@ Beyond the high-impact cases above, here's the full enumeration of every `npm <s
 | `npm config get <key>` | init (Tier-3 E), trust pre-flight | Returns `undefined` literal on older versions | Per `−1.4b` last row |
 | `npm config get @<scope>:registry` | init (Tier-3 E) | Stable across npm 6+ | Same `undefined` normalization |
 | `npm config set <key> <value>` | not invoked by skills (we read, not write) | n/a | n/a |
-| `npm-trust --doctor --json` | release A.3, init Phase 2a, status, audit Phase 4 trust prefix | npm-trust@^0.4 schema (per D3 pin) | Defensive: check `schema.Version`; fall back to per-step discovery if doctor unavailable |
+| `npm-trust --doctor --json` | release A.3, init Phase 2a, status, audit Phase 4 trust prefix | npm-trust@latest schema (capability-probed at runtime via `--capabilities`) | Defensive: check `schemaVersion`; fall back to per-step discovery if doctor unavailable |
 | `npm-trust verify` | trust Phase 6 | Same schema | Same |
 | `npm-trust list --json` | trust Phase 1 | Same | Same |
 | `npm-trust configure --auto` | trust Phase 9 | Same | Same; web-2FA handoff per existing trust skill body |
@@ -359,18 +359,55 @@ if (typeof unpackedSize !== 'number') {
 
 `/verify` Tier 3 (size audit) and `/release` C.7.6 (bundle-size cache) both apply this fallback.
 
-### −1.4d `npm-trust` npx pin (D3, applies to /trust skill)
+### −1.4d `npm-trust` and `prepare-dist` resolution policy (D3 — `@latest` + capability probe)
 
-`/trust` Pre-flight section currently uses `npx -y npm-trust@latest` as a fallback when the CLI isn't installed locally. `@latest` fetches whatever happens to be current on npm — meaning the skill's expectations about flags (`--auto`, `--doctor`, `--json`) may not be satisfied by a future npm-trust release.
+solo-npm's convention (as of v0.18.0): every npm package solo-npm
+itself orchestrates is resolved at `@latest`. There are **no
+hardcoded version pins** in skill bodies, scaffold templates, or
+help text. This applies to `npm-trust`, `prepare-dist`, and any
+future tool the suite adds.
 
-Pin to a known-compatible major version:
+The runtime safety net is the `--capabilities` descriptor (mirrored
+across both tools):
 
 ```bash
-# Instead of: npx -y npm-trust@latest
-# Use:        npx -y npm-trust@^0.4
+# Instead of pinning a major (which goes stale and requires manual bumps):
+#   npx -y npm-trust@^0.11
+
+# We resolve @latest and probe the feature set at runtime:
+CAPS=$(npx -y npm-trust@latest --capabilities --json 2>/dev/null)
+echo "$CAPS" | jq -e '
+  .features as $f
+  | ["doctor","validate-only","verify-provenance","with-prepare-dist","list","configure"]
+  | all(. as $needed | $f | index($needed))
+' >/dev/null && echo "ok" || echo "TOO_OLD"
 ```
 
-Bump the pin explicitly when solo-npm tests against a new npm-trust major. Document the pinned major in `/trust` Pre-flight section so future contributors know to update it deliberately.
+Each skill body lists the **features it depends on** (not version
+numbers). If a future major drops a feature this skill needs, the
+probe surfaces `TOO_OLD` and the skill stops before any side effect.
+The user upgrades / pins / downgrades manually — solo-npm doesn't
+guess on their behalf.
+
+**Trade-off accepted.** A pinned `^X.Y` would shield against a
+broken `@latest` upload. The capability probe instead exposes
+breakage immediately — the skill stops, the user investigates, and
+solo-npm updates its expected feature set in the next release. This
+matches the AI-driven solo-dev workflow: fewer manual maintenance
+burdens (pin bumps), higher trust in the most-recent release.
+
+**GitHub Action references** (e.g., `gagle/prepare-dist@v1`,
+`actions/checkout@v4`) follow the GHA convention where the major
+version tag is force-pushed on each release and IS the
+"latest within major" mechanism. There is no `@latest` for actions;
+`@v<major>` is the equivalent.
+
+**Sites where the @latest convention is enforced**:
+
+- `/trust` Pre-flight CLI resolution (steps 1-4 + version probe).
+- `/init` Phase 0 (toolchain capabilities discovery).
+- `/init` Phase 1c (workflow scaffold via `npm-trust --emit-workflow`).
+- All `pnpm add -D <tool>` / `npm i -g <tool>` recommendations.
 
 
 

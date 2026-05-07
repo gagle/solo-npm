@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.18.0 — Drop npm-package version pins; track `@latest` via runtime capability probe
+
+solo-npm now resolves every npm package it orchestrates (`npm-trust`,
+`prepare-dist`) at `@latest`. There are no hardcoded version pins in
+skill bodies, scaffold templates, or help text. The `--capabilities`
+descriptor (mirrored across both tools, added in their respective
+v0.11.0 / v1.1.0 releases) is the runtime safety net: skills list the
+**features they depend on** rather than version numbers, and the probe
+stops the run before any side effect if a needed feature is missing
+on the resolved binary.
+
+### Changed
+
+- **`/trust` Pre-flight** — `<CLI> = npx -y npm-trust@^0.11` →
+  `<CLI> = npx -y npm-trust@latest`. The version probe (formerly a
+  `--help | grep -- "--capabilities"` check) becomes a feature-set
+  probe: parses `--capabilities --json` and asserts every required
+  feature (doctor, validate-only, verify-provenance, with-prepare-dist,
+  list, configure) is present.
+- **`/init` Phase 0** — toolchain capability probe describes
+  decision-making in terms of feature presence; recommendation
+  language switched to `pnpm add -D npm-trust@latest`.
+- **`/unpublish` −1.4d (D3 canonical reference)** — inverts the
+  pin-major convention. New canonical guidance: always `@latest`,
+  always probe via `--capabilities`, list required features
+  per-skill. The trade-off is documented (pin would shield against
+  a broken `@latest` upload; capability probe instead exposes
+  breakage immediately and stops cleanly).
+- **GitHub Action references** (`gagle/prepare-dist@v1`,
+  `actions/checkout@v4`, etc.) — kept at floating major-version tags.
+  GHA actions don't support `@latest`; `@v<major>` IS the
+  always-latest-within-major mechanism. Documented explicitly in
+  −1.4d.
+
+### Migration notes
+
+- Existing consumers running `/solo-npm:trust` will now resolve
+  `npm-trust` from `@latest` instead of `^0.11`. If you've manually
+  pinned `npm-trust` in your project's devDependencies, the
+  source-checkout / local-devDep resolution paths take precedence and
+  pick up your pin. Only the npx-fallback path (no local install)
+  picks `@latest`.
+- The capability probe replaces the previous `--help | grep -q -- "--capabilities"`
+  check. Behaviour is the same when the binary is current; the
+  failure message now says "missing features X, Y" instead of
+  "TOO_OLD".
+
 ## v0.17.0 — Cross-tool integration overhaul (npm-trust ^0.11 + prepare-dist ^1.1)
 
 Pairs with `npm-trust@0.11.0` (released today) and `prepare-dist@1.1.0`

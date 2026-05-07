@@ -13,7 +13,7 @@ gather inputs → confirm → handle manual steps → execute → verify.
 
 If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:trust work"` / similar, surface a help summary **INSTEAD** of running the skill.
 
-Synthesize from the **Phases** (Pre-flight CLI resolution / Phase 1 discover / Phase 2 execute → auth gate → dry-run → configure → verify), and 2–3 trigger phrases (e.g., *"configure trust for my packages"*, *"setup OIDC"*). Note `/trust` orchestrates the `npm-trust` CLI (pinned to `^0.11` as of v0.17.0) — the CLI is the canonical implementation; this skill is the AI wizard wrapper. See `/unpublish` Phase −0 for canonical format.
+Synthesize from the **Phases** (Pre-flight CLI resolution / Phase 1 discover / Phase 2 execute → auth gate → dry-run → configure → verify), and 2–3 trigger phrases (e.g., *"configure trust for my packages"*, *"setup OIDC"*). Note `/trust` orchestrates the `npm-trust` CLI (tracks `@latest`; runtime capability-probed via `--capabilities`) — the CLI is the canonical implementation; this skill is the AI wizard wrapper. See `/unpublish` Phase −0 for canonical format.
 
 After surfacing, **STOP**. Re-invocation without help triggers runs normally.
 
@@ -45,50 +45,56 @@ invocation in every step below. Try in this order and stop at the first match:
    ```
 4. **Registry fetch (last resort).** Otherwise fall back to:
    ```
-   <CLI> = npx -y npm-trust@^0.11
+   <CLI> = npx -y npm-trust@latest
    ```
-   **Pinned to major 0.11** (bumped from `^0.9` in v0.17.0 after the
-   v0.10/v0.11 cliff fix landed). v0.10.0 added structured exit codes
-   (`EXIT.*`), `--validate-only`, `--verify-provenance`,
-   `--emit-workflow`, `ListReport` and `ConfigureReport` JSON schemas.
-   v0.11.0 added `--with-prepare-dist`, `--capabilities`, and
-   `unpackedSize` in `VerifyProvenanceReport.packages[]`. This skill
-   uses all of those plus the legacy `--auto`, `--doctor`, `--json`,
-   `--list`, `--only-new`, `--dry-run`, `--repo`, `--workflow`,
-   `--scope`, `--packages` flags. Using `@latest` would fetch whatever
-   is current on npm and could silently regress flag availability;
-   bump this pin explicitly when solo-npm is tested against a newer
-   npm-trust major.
+   **Tracks `@latest`** — solo-npm's convention is to always run the
+   freshest published `npm-trust`. The version probe immediately below
+   uses `--capabilities` (a JSON descriptor that lists every flag and
+   feature the resolved binary exposes); the skill body branches on
+   feature presence rather than on a numeric version pin. If a future
+   `npm-trust` release removes a flag this skill needs, the probe
+   surfaces it as `TOO_OLD` and stops before any side effects.
 
 If your shell's `npx` form rejects the package (some npm 11 setups require
-`npm exec --` instead), substitute `npm exec -- npm-trust@^0.11` for
+`npm exec --` instead), substitute `npm exec -- npm-trust@latest` for
 the npx fallback.
 
 Use the chosen invocation in **every** subsequent step. Below, `<CLI>` is the
 placeholder — replace mentally.
 
-### Verify the resolved version supports the flags this skill uses
+### Verify the resolved CLI exposes every feature this skill uses
 
-Probe for a v0.11+ specific flag (`--capabilities`, added in v0.11.0):
+Probe `--capabilities` and check the feature set the skill depends on
+is present. This replaces version-number pinning with **feature
+presence** as the gate:
 
 ```bash
-<CLI> --help 2>/dev/null | grep -q -- "--capabilities" \
-  && echo "ok" \
-  || echo "TOO_OLD"
+CAPABILITIES=$(<CLI> --capabilities --json 2>/dev/null) || echo "TOO_OLD"
+
+# Required features for this skill body:
+echo "$CAPABILITIES" | jq -e '
+  .features as $f
+  | ["doctor","validate-only","verify-provenance","with-prepare-dist","list","configure"]
+  | all(. as $needed | $f | index($needed))
+' >/dev/null && echo "ok" || echo "TOO_OLD"
 ```
 
-If the result is `TOO_OLD`, the resolved binary predates v0.11.0 and
-this skill cannot use the structured exit codes, JSON schemas, or
-capabilities-discovery primitives it relies on. **Stop** and ask the
-user to upgrade with `npm i -g npm-trust@^0.11` (or remove the cached
-version that resolved).
-
-The capabilities probe also exposes the rest of the toolchain. Reading
-the descriptor lets the skill confirm the runtime supports every flag
-it intends to call before executing any side effects:
+If the result is `TOO_OLD`, the resolved binary either predates
+`--capabilities` (added in npm-trust 0.11.0) or doesn't expose every
+feature the skill body needs. **Stop** and ask the user to refresh
+the cached binary:
 
 ```bash
-<CLI> --capabilities --json | jq '.features, .version'
+npm i -g npm-trust@latest    # or
+pnpm dlx npm-trust@latest --capabilities --json   # forces the npx cache to refresh
+```
+
+The capabilities descriptor also surfaces the resolved version + JSON
+schemas + exit codes used by the H1-H8 mapping. Read it once at the
+top of every run:
+
+```bash
+<CLI> --capabilities --json | jq '{version, features, jsonSchemas, exitCodes}'
 ```
 
 ## Phase 1 — Discover (one call when --doctor is supported)

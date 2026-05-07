@@ -78,12 +78,16 @@ pnpm exec prepare-dist --capabilities --json 2>/dev/null
 
 **Decisions taken from the descriptors**:
 
-- `npm-trust.version` ≥ `0.11.0` is required. If lower (or the probe
-  exits non-zero), STOP and direct the user to `pnpm add -D npm-trust@^0.11`.
+- The `npm-trust` capability set must include `doctor`, `validate-only`,
+  `verify-provenance`, `with-prepare-dist`, `list`, `configure`. If any
+  feature is missing (or the probe exits non-zero), STOP and direct
+  the user to `pnpm add -D npm-trust@latest`. solo-npm tracks the
+  freshest published `npm-trust` — there is no version pin to bump.
 - If `prepare-dist` is detected (probe exits 0 OR `package.json#devDependencies.prepare-dist` is present), record `usePrepareDist: true` for use in Phase 1c. Phase 1c emits the template variant via `npm-trust --emit-workflow --with-prepare-dist`. Phase E.0 of `/release` will invoke `prepare-dist --json` between build and publish.
 - If neither tool is installed (a fresh repo, capability probes fail),
-  Phase 1a will offer `pnpm add -D npm-trust prepare-dist` as part of
-  the scaffold plan (the user decides whether prepare-dist is wanted).
+  Phase 1a will offer `pnpm add -D npm-trust prepare-dist` (always
+  `@latest`) as part of the scaffold plan (the user decides whether
+  prepare-dist is wanted).
 
 The capabilities descriptors are also used by the H1-H8 error-pattern
 catalog: `exitCodes[]` from each tool maps directly to the H-pattern
