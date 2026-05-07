@@ -25,11 +25,28 @@ Each scenario has:
 
 **Trigger**: *"ship a release"*
 
-**Expected**:
-- Phase A silent (verify passes; trust + audit caches hot).
-- Phase B renders auto-bump suggestion (e.g., `1.5.1` from `fix:` commits) + changelog draft.
+**Expected** (current as of v0.13.0):
+- **Phase −1** (universal): tool detection, `.gitconfig` user check, env-vars OK, atomic state.json helper available, gh pre-flight (`GH_AVAILABLE=1` if gh authenticated). Silent on the happy path.
+- **Phase 0**: prompt-context extraction. *"ship a release"* doesn't pre-fill a specific version → no override.
+- **Phase 0.5**: regex validation — no extracted slots; nothing to validate.
+- **Phase 0.5b**: shell-safety — no extracted slots; nothing to validate.
+- **Phase A.1** (working tree clean): passes silently. Detached-HEAD detection passes; worktree detection passes; submodule detection passes.
+- **Phase A.2** (verify): `/verify` invocation. Passes silently. Tier 3 secrets check passes. CRLF-in-tarball check passes for typical repos (no bin scripts with CRLF).
+- **Phase A.3** (cache-aware trust check): hot path — `state.json#trust.configured` is fresh and includes this package; zero npm calls; silent.
+- **Phase A.5** (audit cache check): hot path — `state.json#audit.tier1Count == 0` and `tier2Count == 0`; silent. (If tier1Count > 0, would HARD STOP with cached CVE list per v0.10.1.)
+- **Phase B.3** (collect commits since LATEST_TAG): `git log` capped at `--max-count=500` (Tier-3 K, v0.12.0+). Conventional-commits parse rejects unknown types with "did you mean" hints (Tier-3 F, v0.12.0+).
+- **Phase B.5** renders auto-bump suggestion (e.g., `1.5.1` from `fix:` commits) + changelog draft.
 - ONE `AskUserQuestion`: *"Approve release plan?"* with options *Proceed with v1.5.1 / Abort*.
-- On Proceed: bumps `package.json`, prepends CHANGELOG, commits `chore: release v1.5.1`, pushes, tags `v1.5.1`, pushes tag, watches CI, verifies registry attestation, creates GitHub Release with the just-prepended CHANGELOG entry as body, updates `pkgCheck.lastSize`, prints final notification.
+- **Phase C.0a** (concurrent-release lock, v0.11.0+): acquires `.solo-npm/locks/<repo-root-hash>.lock` with stale-PID auto-cleanup.
+- **Phase C.1** (apply CHANGELOG + version): atomic state.json write per H7.
+- **Phase C.2** (commit) with pre-commit hook failure rollback (Tier-2 B3, v0.11.0+).
+- **Phase C.3** (push commit) with rejection categorization (non-FF / pre-receive / pre-push hook / branch protection / auth) + SSL/TLS remediation if applicable (Tier-3 B, v0.12.0+).
+- **Phase C.4** (final pre-tag verify): re-runs `/verify`.
+- **Phase C.5** (tag + push): pre-flight `git ls-remote --tags origin "refs/tags/v1.5.1"` (Tier-1 v0.10.1) — STOP if exists. Then `git tag` (sets `LOCAL_TAG_PENDING_PUSH` for SIGINT trap). Then `git push --tags` with same rejection categorization. On tag push failure, rolls back local tag.
+- **Phase C.6** (CI watch): `timeout 1800 gh run watch --exit-status` (Tier-2 B1). Skipped if `GH_AVAILABLE=0`.
+- **Phase C.7** (registry verify): post-publish `npm view` with H4 propagation-lag retry (3 × 5s). Surfaces non-fatal note if registry still inconsistent after 15s.
+- **Phase C.7.5** (GitHub Release): `gh release create` with B5 warn-don't-fail behavior (publish already succeeded; release page is secondary).
+- **Phase C.7.6** (bundle-size cache): atomic state.json update per H7.
 
 **Verify**:
 - `git log` shows the new release commit
@@ -38,6 +55,7 @@ Each scenario has:
 - `npm view <pkg>@1.5.1 dist.attestations` returns provenance data
 - GitHub Release page (`gh release view v1.5.1`) shows the CHANGELOG body
 - `.solo-npm/state.json#pkgCheck.lastSize["<pkg>@1.5.1"]` is set
+- `.solo-npm/locks/` is empty (lock released on EXIT trap)
 
 ### S2 — Pre-release start (new beta line)
 
@@ -45,9 +63,11 @@ Each scenario has:
 
 **Trigger**: *"start a beta for v2"*
 
-**Expected**:
+**Expected** (current as of v0.13.0):
 - Phase 0 extracts `IDENTIFIER=beta`, `BASE_BUMP=major`. Skips both START questions.
-- Phase A pre-flight passes (release.yml has dist-tag step from /init scaffold).
+- **Phase 0.5 IDENTIFIER validation** (v0.11.0+): regex `^(alpha|beta|rc|canary|experimental|next|preview|edge)$` passes for `beta`. Typos like `betta` would STOP with did-you-mean.
+- **Phase 0.5b shell-safety** (v0.11.0+): no metacharacters in `IDENTIFIER` or `BASE_BUMP`; passes.
+- **Phase A pre-flight**: working-tree clean. Verifies `release.yml` includes the dist-tag step (the three-layer detection from `/init` scaffold). If missing, would auto-chain to `/init --refresh-yml` with a single AskUserQuestion gate.
 - Phase B renders plan: `1.5.0 → 2.0.0-beta.0`. ONE `AskUserQuestion`: *Proceed with v2.0.0-beta.0 / Abort*.
 - On Proceed: bumps to `2.0.0-beta.0`, commits, tags, pushes, CI publishes to `@next`.
 - Phase C.7 confirms `npm view dist-tags.next === "2.0.0-beta.0"`.
@@ -114,14 +134,17 @@ Each scenario has:
 
 **Trigger**: *"audit my deps and fix"*
 
-**Expected**:
+**Expected** (current as of v0.13.0):
 - /audit runs pnpm audit; classifies tar-fs into Tier 1.
+- **Phase 1 summary-first parse** (Tier-3 F, v0.12.0+): for repos > 500 deps, severity counts parsed first; Tier 1/2 advisory detail drilled into; Tier 3/4 deferred to opt-in `--full`.
 - Phase 4 renders per-tier table with the advisory.
 - Phase 5 AskUserQuestion: *Fix Tier 1 now (Recommended) / Fix Tier 1 + 2 / Deprecate affected versions / Show details / Defer*.
 - User picks "Fix Tier 1 now" → chains to `/solo-npm:deps cve-tier-1`.
+- **H6 chain-failure recovery (v0.11.0+)**: if `/deps` STOPs (lockfile conflict, registry unreachable, etc.), `/audit` captures the diagnostic and surfaces retry/switch-to-deprecate/audit-only/abort options.
 - /deps Phase 1: filters to the tar-fs upgrade; classifies as CVE-driven.
 - /deps Phase 4: snapshots, runs `pnpm update tar-fs@<fix-version>`, runs /verify, commits on pass.
-- /audit Phase 6: writes back `tier1Count: 0` to state.json.
+- /audit Phase 6: writes back `tier1Count: 0` to state.json (atomic write per H7).
+- **Effect on next `/release`**: Phase A.5 audit cache check (v0.10.1+) sees `tier1Count == 0` and proceeds. Had the user picked "Defer" instead, the cache would still show `tier1Count > 0` and the next `/release` would HARD STOP at A.5 with the cached CVE list.
 
 **Verify**:
 - `git log` shows `chore(deps): upgrade tar-fs to <fix> (GHSA-xxxx)`
@@ -164,15 +187,23 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Trigger**: *"integrate solo-npm into this repo and bootstrap"*
 
-**Expected**:
+**Expected** (current as of v0.13.0):
 - Plugin install prompts (one-time per machine).
-- /init Phase 1: scaffolds `release.yml` + `publishConfig` + `.nvmrc` + wrappers + `.solo-npm/state.json`.
-- Phase 1d: invokes `/verify --pkg-check-only`. May surface warnings (missing description, keywords, repository.url). Auto-fix offers for derivable fields.
+- /init Phase 1: scaffolds `release.yml` + `publishConfig` + `.nvmrc` + wrappers + `.solo-npm/state.json` (workspace edge checks per Tier-3 H: STOPs if pnpm-workspace.yaml glob expands to zero matches; surfaces "publishing only N of M packages" for mixed `private: true` + public).
+- **Phase 1c .npmrc API** (Tier-3 E, v0.12.0+): scope→registry detection uses `npm config get @<scope>:registry` rather than ad-hoc `.npmrc` grep.
+- **Phase 1d pkg-check validation loop** (v0.12.0+, load-bearing):
+  1. Invokes `/verify --pkg-check-only`.
+  2. On `PKG_CHECK_OK` → continue to 1e.
+  3. On `PKG_CHECK_FAIL` with auto-fix offers → AskUserQuestion → apply selected fixes → **re-runs pkg-check in a loop** until clean or unfixable.
+  4. On unresolvable errors → HARD STOP with *"Init scaffolded the workflow files but `package.json` has unresolvable issues."*
+  5. **On secrets detection (Tier 3)** → HARD STOP with verbatim secrets-detection block; does NOT proceed to commit.
+  6. **H6 chain-failure recovery** (v0.11.0+): if `/verify` itself errors, surfaces retry/skip/abort gate.
 - Phase 1e: AskUserQuestion *Commit + push (Recommended) / Commit only / Stage only / Skip*.
-- Phase 2: `npm-trust --doctor` detects PACKAGE_NOT_PUBLISHED. `npm whoami` check + foolproof login handoff if needed.
-- Phase 2 AskUserQuestion: *Run `npm publish --provenance=false --access public` now to claim the package name `<NAME>`? Yes / I'll publish manually / Abort*.
+- Phase 2a: `npm whoami` check + foolproof login handoff if needed.
+- Phase 2b: AskUserQuestion *Run `npm publish --provenance=false --access public` now to claim the package name `<NAME>`? Yes / I'll publish manually / Abort*.
+- **Phase 2c**: H3 auth-race re-check before publish (v0.11.0+); EOTP/H1 manual handoff if 2FA-on-writes is enabled.
 - User picks Yes → agent runs publish.
-- Phase 3: chains into `/solo-npm:trust`. Trust wizard runs; user does web 2FA.
+- Phase 3: chains into `/solo-npm:trust`. Trust wizard runs; user does web 2FA. **H6 chain-failure recovery**: if `/trust` STOPs, surfaces retry/skip/abort.
 - Phase 4: prints "Init complete".
 
 **Verify**:

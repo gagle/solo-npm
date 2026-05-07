@@ -110,8 +110,155 @@ When adding a command to the plugin:
 5. If the command has a daily-use cadence (like `release`/`verify`),
    consider whether it deserves a consumer wrapper template — and
    update `.claude/commands/init.md` to scaffold it.
-6. Test with `claude --plugin-dir .` and verify `/solo-npm:<name>`
+6. **Apply the patterns + conventions** in the section below — phase
+   structure, error-handling references, prompt validation, etc. New
+   skills follow the patterns established in v0.10.0–v0.13.0.
+7. Test with `claude --plugin-dir .` and verify `/solo-npm:<name>`
    appears in autocomplete.
+
+## Patterns + conventions (v0.10.0–v0.13.0)
+
+Skills added or modified from v0.10.0 onward follow strict conventions
+for safety, error handling, and reliability. Most patterns are
+documented **canonically in `/unpublish`** (the most mature skill body)
+and **referenced by name** from sibling skills — to avoid prose
+duplication and keep all implementations in sync.
+
+When adding a new pattern that applies universally, document it
+canonically in `/unpublish` and brief-reference from each affected
+sibling. When adding a skill-specific pattern, just document inline.
+
+### Phase numbering — `−1` / `0` / `0.5` / `0.5b` / `A`–`G`
+
+Skills run phases in this order:
+
+- **Phase −1** (universal pre-flight, canonical in `/unpublish`): tool
+  detection, timeout wrappers, `.gitconfig` user check, env-var
+  validation, atomic state.json writes, defensive npm parsing,
+  detached-HEAD / worktree / submodule detection, gh pre-flight, lock
+  acquisition, rate-limit + SSL + SIGINT handlers. Sibling skills
+  reference the relevant subset.
+- **Phase 0**: prompt-context extraction. Pre-fill what's clear from the
+  user's prompt; AskUserQuestion only for what's missing. Don't
+  over-extract.
+- **Phase 0.5**: regex validation of extracted slots (semver,
+  identifier, scope/name) — STOP on malformed input rather than letting
+  it flow into Phase A.
+- **Phase 0.5b**: shell-safety hardening — reject shell metacharacters
+  (`;`, `&`, `|`, backtick, `$`, parens, redirects, control chars) in
+  any extracted slot that flows into shell interpolation.
+- **Phase A**: pre-flight + state read. Auth check, working-tree clean,
+  workspace discovery, cache reads.
+- **Phase B**: render plan + AskUserQuestion gate (single question per
+  gate; "Recommended" marker on default; "Abort" always available).
+- **Phase C**: execute. Auth re-check (H3), lock acquisition (H5),
+  destructive operations.
+- **Phase D**: verify + summarize. Post-mutation `npm view` with
+  propagation-lag retry (H4); state.json cache cleanup; final
+  summary.
+- **Phase E–G** (skill-specific): cleanup chains, post-major
+  deprecation, forward-port, etc.
+
+Don't mix the two phase-naming conventions within a skill (numbered
+`Phase 1, 2, …` vs lettered `Phase A, B, …`). Choose based on whether
+the skill has branching or sub-phases.
+
+### H1–H8 error-handling pattern catalog
+
+Eight reusable error-handling patterns established v0.10.0–v0.13.0,
+canonical in `/unpublish`. When adding error handling to a new skill,
+reference these by name:
+
+| Pattern | What it handles |
+|---|---|
+| **H1** | OTP / 2FA-on-writes detection — surface manual handoff with `--otp=<code>` |
+| **H2** | `.solo-npm/state.json` corruption guard + atomic writes |
+| **H3** | Auth-window race — re-check `npm whoami` before destructive call |
+| **H4** | Registry propagation lag retry — 3 attempts × 5s on post-mutation `npm view` |
+| **H5** | Concurrent invocation lock — `.solo-npm/locks/<sanitized>.lock` with stale-PID auto-cleanup |
+| **H6** | Chain-target failure recovery — capture child STOP messages and surface in parent context |
+| **H7** | Universal tool reliability — Phase −1 pre-flight checklist |
+| **H8** | Rate-limit backoff — 429 detection + exponential 1s/2s/4s/8s with jitter; max 4 attempts |
+
+When you add a new pattern that applies universally, propose H9, H10,
+etc., and document it canonically in `/unpublish`.
+
+### npm CLI BCL convention
+
+Every `npm <subcmd>` call solo-npm makes has known cross-version
+variations (npm 6/7/8/9/10 schema differences,
+private-registry edge cases, etc.). The comprehensive BCL table in
+`/unpublish` Phase −1.4b enumerates ~30 patterns + the defensive-parse
+fallback per call.
+
+**At every npm call site**:
+
+1. Wrap with `timeout 30` (or longer for CI watch).
+2. Redirect stderr `2>/dev/null` if piping to a JSON parser.
+3. Check return code; on failure classify per H1 / H4 / SSL / general.
+4. On success, validate expected fields exist before reading; fall
+   back per the BCL table.
+5. For mutation calls, apply H1 + H3 + H5 + H8 wrappers.
+
+### State.json conventions
+
+- **Read-modify-write that preserves unknown fields** (H2) — `state.X =
+  newValue` would silently drop future-schema additions; instead read
+  the entire object, mutate only the relevant keys, write back the
+  entire object.
+- **Atomic writes** — write to `.solo-npm/state.json.tmp`, then
+  `fs.renameSync()`. Single atomic inode swap on POSIX. A killed-mid-
+  write process leaves the original cache intact.
+- **Corruption guard on reads** — every `JSON.parse` wrapped in
+  try/catch; on parse fail surface non-fatal warning, treat as empty
+  cache, continue.
+
+### Lock file convention
+
+- Path: `.solo-npm/locks/<sanitized-pkg-name>.lock` (replace `/` with
+  `_`). For per-repo locks (e.g., `/release`), use the repo root hash.
+- Content: PID of the holding process.
+- Acquisition: check existence; if alive (`kill -0 $PID` succeeds),
+  STOP. If dead, WARN + clean + proceed.
+- Cleanup: `trap 'rm -f $LOCK' EXIT` for graceful exit; SIGINT trap
+  (Phase −1.11) for Ctrl+C. SIGKILL leaks the lockfile — handled by
+  the next acquisition's stale-PID auto-cleanup.
+
+### AskUserQuestion conventions
+
+- **One question per gate**. Don't cascade multiple questions in
+  sequence without intermediate state.
+- **"Recommended" marker on the default option** — explicit, not
+  implicit by ordering. Helps Claude pick correctly when the user is
+  vague.
+- **"Abort" always available** as the last option. Lets the user back
+  out at any gate.
+- **Header naming**: short, action-noun (`"Apply deprecation"`,
+  `"Confirm unpublish"`). Not a full sentence.
+- **AskUserQuestion is for human decisions**, not yes/no plumbing.
+  Don't use free-text "yes/no" prompts — AskUserQuestion or nothing.
+
+### Where to document new patterns
+
+| Pattern type | Where to document |
+|---|---|
+| Universal (applies to ≥3 skills) | Canonical in `/unpublish` Phase −1 (numbered subsection); brief-reference from each affected sibling |
+| Error-handling pattern (extends H1–H8) | Add H9/H10/… in the catalog above + canonical implementation in `/unpublish` |
+| Skill-specific (1 skill only) | Inline in that skill's body; no need to centralize |
+| Phase-structure addition (new Phase X) | Document in `/unpublish` first as the canonical reference, then propagate |
+
+When you propagate a pattern from `/unpublish` to a sibling, the
+sibling gets a brief 1-paragraph reference, NOT a duplicated
+implementation. The sibling reads "see `/unpublish` Phase −1.X for
+canonical wording" and applies the pattern at its own Phase A or
+Phase C.
+
+### Adding a new error-handling test
+
+Each new error-handling pattern should land with a regression scenario
+in `docs/regression.md`. Number sequentially (S34, S35, …). Each
+scenario has Setup / Trigger / Expected / Verify sections per the
+existing template.
 
 > **Why `.claude/commands/<name>.md` and not `skills/<name>/SKILL.md`?**
 > Both forms work the same way functionally per the Claude Code docs.

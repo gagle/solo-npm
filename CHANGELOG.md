@@ -1,5 +1,57 @@
 # Changelog
 
+## v0.14.0 — docs alignment pass (CONTRIBUTING + README + regression catch-up)
+
+Closes 3 of the 4 maintainer-owned items on the v1.0.0 punch list. No code changes; pure docs alignment.
+
+### `CONTRIBUTING.md` — `+150` lines
+
+Added a comprehensive **"Patterns + conventions (v0.10.0–v0.13.0)"** section that captures the patterns added in five hardening passes which had no contributor-facing documentation:
+
+- **Phase numbering** (`−1` / `0` / `0.5` / `0.5b` / `A`–`G`) explained — what fires when, what each phase is responsible for.
+- **H1–H8 error-handling pattern catalog** with 1-line descriptions per pattern + canonical-in-`/unpublish` reference.
+- **npm CLI BCL convention** — every `npm <subcmd>` call site applies the comprehensive BCL table from `/unpublish` Phase −1.4b.
+- **State.json conventions** — read-modify-write with unknown-field preservation; atomic writes; corruption guard.
+- **Lock file convention** — path, content, acquisition, cleanup.
+- **AskUserQuestion conventions** — one question per gate; "Recommended" marker; "Abort" always available; semantic header.
+- **Where to document new patterns** — universal patterns canonical in `/unpublish`, brief-reference from siblings.
+- **Adding a new error-handling test** convention — sequential S-numbering in regression.md.
+
+Also added step 6 to the "Adding a new command" section: "Apply the patterns + conventions in the section below."
+
+### `README.md` — `+25` lines
+
+Added a new **"Hardening + stability"** top-level section after `npm coverage` that surfaces what was previously invisible to consumers: the user-visible behaviors from v0.10.1–v0.13.0 hardening passes (new STOP classes, tag-collision pre-flight, push categorization, SSL/TLS remediation, rate-limit handling, SIGINT cleanup, conventional-commits did-you-mean, concurrent-invocation locks). Lets consumers wondering "is it stable enough" find the answer without digging through 4 versions of CHANGELOG.
+
+### `docs/regression.md` — major drift fixes on S1, S2, S5, S7
+
+Per the audit, these scenarios described pre-v0.10.0 behavior. Fixed:
+
+- **S1** (Daily release happy path): now describes the full Phase −1 / Phase 0 / 0.5 / 0.5b / A.1–A.5 / B.3 / C.0a / C.1–C.7.6 sequence including the load-bearing additions (audit cache pre-flight, tag-collision pre-flight, push rejection categorization, H4 propagation retry, B5 warn-don't-fail on `gh release create`, atomic state.json writes).
+- **S2** (Pre-release start): added Phase 0.5 IDENTIFIER validation with did-you-mean + Phase A `release.yml` freshness check with optional `/init --refresh-yml` auto-chain.
+- **S5** (CVE response with deprecate): added summary-first parse for >500-dep repos, H6 chain-failure recovery on `/deps` failure, and the cross-skill effect on `/release` Phase A.5 audit cache.
+- **S7** (First publish on brand-new repo): now documents the load-bearing Phase 1d pkg-check validation loop (auto-fix loop, secrets HARD STOP, H6 retry gate), Phase 1c .npmrc API, Phase 2c H3 auth-race re-check, and trust chain H6 recovery.
+
+Minor drift items in S3, S4, S6, S8, S12 are noted in the audit but not surgically fixed in this pass — they're noise-level (phase mechanics not described, optional gates not mentioned). May fix opportunistically in a future docs pass.
+
+### v1.0.0 punch list status
+
+Before v0.14.0:
+- 6 items: 4 maintainer-owned + 2 external/temporal
+
+After v0.14.0:
+- **3 items remaining**: 1 maintainer-owned (run regression S1–S33 end-to-end at least once) + 2 external/temporal (wider adoption signal, drift caught once)
+
+Of the 3 maintainer-owned docs items shipped here, only **the live end-to-end regression run** remains — that requires actual `npm publish` against real npm, which only the maintainer can do.
+
+### Why minor (not patch)
+
+CONTRIBUTING.md additions are substantive (new conventions section); README adds a new top-level section; regression.md scenario rewrites change observable behavior expectations. Per the user's direction, ships as v0.14.0 minor bump.
+
+### Upgrading
+
+`/reload-plugins` after marketplace update. No behavioral change for consumers — pure docs alignment.
+
 ## v0.13.0 — Tier-4 polish pass (proactive rate tracker + npm BCL table + shell-safety + CRLF-in-tarball + submodules + audit-summary-first)
 
 Closes the entire `Post-v1.0.0 polish (finalized non-goals)` list from `docs/stability.md`. After v0.13.0 ships, the polish list is empty — every previously-deferred item shipped at scoped depth. The only thing blocking v1.0.0 declaration is the 3 external/temporal items (demo repo, wider adoption, regression-caught-once).

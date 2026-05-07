@@ -106,6 +106,23 @@ For the deeper analysis of how this maps to npm's full surface area (and the rat
 
 ---
 
+## Hardening + stability
+
+solo-npm is **code-side complete** as of v0.13.0 — the v1.0.0 entry criteria for the skill set itself are met. Five major hardening passes shipped between v0.10.1 and v0.13.0; what follows are the user-visible behaviors that came out of them. Most users won't notice anything different (the happy path works the same); these are surfaces you'll see when something goes wrong:
+
+- **New STOP classes**: detached HEAD, running inside a `git worktree`, unsynced submodules, malformed extracted prompt slots (Phase 0.5 regex), shell metacharacters in extracted slots (Phase 0.5b), CRLF in published bin scripts. Each surfaces with concrete remediation.
+- **Tag-collision pre-flight** in `/release` C.5 (catches tag-already-exists on origin BEFORE creating the local tag — fixes the post-`/unpublish` re-release case).
+- **`git push` rejection categorization** — non-fast-forward, server-side hook, client-side pre-push hook, branch protection, auth fail each get a specific remediation block instead of one stderr dump.
+- **SSL/TLS error remediation** — every external HTTPS call (curl, git push, npm) detects SSL patterns and surfaces the 4-option block (transient retry / corporate proxy / OS CA bundle / `--insecure` last resort).
+- **Rate-limit handling** in `/status` — proactive `X-RateLimit-Remaining` tracking on `gh` calls; reactive H8 exponential backoff (1s/2s/4s/8s with jitter) on 429 from npm registry.
+- **SIGINT cleanup** — Ctrl+C during a destructive multi-step skill cleans up state-aware (deletes local-only tag if mid-tag-push, drops stash if mid-stash, etc.).
+- **Conventional-commits did-you-mean** in `/release` — typo'd commit types (`breaking:`, `releases:`) get a "did you mean" hint.
+- **Concurrent-invocation locking** — `/release`, `/hotfix`, `/prerelease`, `/deprecate`, `/dist-tag`, `/owner`, `/unpublish` use `.solo-npm/locks/<pkg>.lock` with stale-PID auto-cleanup. Two parallel runs on the same package/repo get a clear "another run holds the lock" message instead of a race.
+
+The full per-version detail is in [`CHANGELOG.md`](./CHANGELOG.md). For consumers wondering "is it stable enough", the answer is: code-side yes; v1.0.0 declaration pending external validation (see [`docs/stability.md`](./docs/stability.md)).
+
+---
+
 ## Tell Claude
 
 The fastest path: open Claude Code in your repo and say:
