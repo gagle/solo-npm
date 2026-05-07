@@ -171,11 +171,48 @@ CVE-driven (J deps):
 For Major bumps, surface upstream release notes URL. Resolve via:
 
 ```bash
-npm view <pkg> repository.url   # → github.com/owner/repo
-gh release list --repo <owner>/<repo> --limit 5 --json tagName,name,url
+timeout 30 npm view <pkg> repository.url 2>/dev/null   # → github.com/owner/repo
+gh_with_rate_tracker "gh release list --repo <owner>/<repo> --limit 5 --json tagName,name,url"
 ```
 
 Pick the release tag matching the target version.
+
+**GraphQL fan-in for Major-bump batches (Tier-4 #3, v0.13.0)**: when a single batch contains > 5 Major-bump deps from > 5 distinct GitHub repos (each needing a release-notes lookup), switch to a single `gh api graphql` call mirroring the `/status` Phase 2 pattern (canonical reference). One round-trip vs N×`gh release list` calls — saves 5–15s on large dep batches and reduces rate-limit pressure.
+
+```bash
+# Threshold: >5 unique upstream repos triggers GraphQL fan-in
+UNIQUE_UPSTREAM_REPOS=$(echo "$MAJOR_BUMP_REPOS" | sort -u | wc -l)
+if [ "$UNIQUE_UPSTREAM_REPOS" -gt 5 ]; then
+  # Build a graphql query with N repository sub-queries (aliased r0, r1, ...)
+  # asking for releases(first: 5).
+  QUERY='query {'
+  i=0
+  for repo in $MAJOR_BUMP_REPOS_DEDUP; do
+    OWNER="${repo%/*}"; NAME="${repo#*/}"
+    QUERY+="
+      r${i}: repository(owner: \"${OWNER}\", name: \"${NAME}\") {
+        releases(first: 5, orderBy: {field: CREATED_AT, direction: DESC}) {
+          nodes { tagName name url publishedAt }
+        }
+      }"
+    i=$((i + 1))
+  done
+  QUERY+='
+}'
+
+  RESULT=$(timeout 30 gh api graphql -f query="$QUERY" 2>&1)
+  if [ $? -ne 0 ]; then
+    echo "WARN: graphql release-notes fan-in failed: $RESULT"
+    echo "      Falling back to per-repo gh release list calls (each with rate-limit tracker)."
+    USE_GRAPHQL=0
+  else
+    USE_GRAPHQL=1
+    # Parse RESULT.data.r0, r1, ... into the per-dep release-notes map
+  fi
+fi
+```
+
+For ≤5 upstream repos OR after graphql failure, the per-repo loop above (with `gh_with_rate_tracker`) is the fallback path.
 
 Then call `AskUserQuestion`:
 

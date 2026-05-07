@@ -60,6 +60,48 @@ Capture full advisory list. Each advisory has at minimum:
 Different package managers expose this differently. Normalize to a
 common shape internally.
 
+### Summary-first parse for large-portfolio output (Tier-4 #5, v0.13.0)
+
+For repos with >500 deps, the full `npm audit --json` output can exceed Claude's tool-result token budget. Truncation would cause classification logic to silently miss advisories (a strict-safety failure).
+
+**Convention**: parse summary first, then drill into Tier 1/2 details only:
+
+```bash
+# Step 1: get the full JSON, but parse only the metadata/summary first
+AUDIT_JSON=$(pnpm audit --json 2>/dev/null)   # or npm/yarn equivalent
+
+# Step 2: extract counts by severity (small, fixed-size output regardless of dep count)
+SEVERITY_COUNTS=$(echo "$AUDIT_JSON" | jq -r '
+  if .vulnerabilities then
+    [.vulnerabilities[] | .severity] | group_by(.) | map({severity: .[0], count: length}) | from_entries
+  elif .advisories then
+    # npm 6 fallback path
+    [.advisories | to_entries[].value.severity] | group_by(.) | map({severity: .[0], count: length}) | from_entries
+  else {}
+  end
+')
+
+# Step 3: drill into Tier 1+2 advisory details only (critical-runtime-direct + high-runtime + critical-transitive)
+TIER12_ADVISORIES=$(echo "$AUDIT_JSON" | jq '
+  if .vulnerabilities then
+    [.vulnerabilities[] | select(.severity == "critical" or .severity == "high")]
+  elif .advisories then
+    [.advisories | to_entries[].value | select(.severity == "critical" or .severity == "high")]
+  else []
+  end
+')
+
+# Step 4: defer Tier 3/4 detail to opt-in. Phase 4 renders summary counts for them
+# (not per-advisory rows) unless the user passes a `--full` flag.
+
+if [ "$DEP_COUNT" -gt 500 ]; then
+  echo "INFO: large dep tree detected ($DEP_COUNT deps); rendering Tier 1/2 details only."
+  echo "      Tier 3/4 advisories shown as severity counts. Run with --full to see all."
+fi
+```
+
+This keeps the parse output bounded — summary fits in any token budget, Tier 1/2 detail is the actionable subset, Tier 3/4 detail is opt-in. The 500-dep threshold is the heuristic; below it, full-detail rendering is fine.
+
 ## Phase 2 — Enrich
 
 For each advisory, compute:

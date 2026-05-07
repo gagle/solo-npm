@@ -73,18 +73,9 @@ What remains is **external/temporal** — these validate the API in the wild rat
 
 **v1.0.0 ships when those three are met.** Internal patterns (phase numbering, AskUserQuestion option text, etc.) may keep iterating within v0.x even though the structural commitments above are already shaped to be v1.0.0-stable.
 
-### Post-v1.0.0 polish (finalized non-goals)
+### Polish list (closed)
 
-After v0.12.0, the following remain explicit non-goals — not stability concerns, just polish or theoretical edge cases:
-
-- **Concurrent rate-limit tracker** (`X-RateLimit-Remaining` header tracking) — over-engineering vs the simple H8 exp backoff, which already handles the real-world case
-- **Full npm CLI backward-compat layer** beyond the high-impact cases in v0.11.0 D2 + v0.12.0 G — the long tail of npm 6/7/8/9/10/11 schema variations is large, vendor-specific, and rarely hit by solo-dev workflows
-- **`gh` GraphQL for arbitrary fan-out** beyond `/status` — no other skill currently needs cross-repo aggregation; if a future skill does, it can reuse the `/status` Phase 2 template
-- **AI-prompt injection hardening** beyond the v0.11.0 Phase 0.5 regex validation — Claude itself handles the higher-order injection cases
-- **Output truncation for >500-dep `npm audit`** — defer until a real user with that many deps reports the issue
-- **Submodule state mismatch detection** — niche; submodules are uncommon in solo-dev npm workflows
-- **Tool version shadowing in PATH** (multiple installations of git/gh/npm) — H7's version reporting surfaces what we got; choosing the user's preferred is their environment concern
-- **CRLF as STOP rather than WARN** — current v0.12.0 surfaces a warning; elevating to STOP would block real-world Windows users with `core.autocrlf=true` repos that aren't actually broken
+Previous versions of this doc maintained a `Post-v1.0.0 polish` list of deferred items. **As of v0.13.0, every item on that list has shipped.** See `CHANGELOG.md` v0.13.0 entry for the per-item map. The list is removed from this doc to keep stability.md focused on the forward-looking commitments.
 
 ## Versioning policy in v0.x
 

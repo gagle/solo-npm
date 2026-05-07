@@ -1,7 +1,7 @@
 {
   "name": "solo-npm",
   "description": "AI skills for every npm command a solo dev runs — publish, version, dist-tag, deprecate, audit, deps, owner, trust — with verify gates and provenance baked in.",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "author": { "name": "Gabriel Llamas" },
   "homepage": "https://github.com/gagle/solo-npm",
   "repository": "https://github.com/gagle/solo-npm",

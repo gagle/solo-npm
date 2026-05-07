@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.13.0 — Tier-4 polish pass (proactive rate tracker + npm BCL table + shell-safety + CRLF-in-tarball + submodules + audit-summary-first)
+
+Closes the entire `Post-v1.0.0 polish (finalized non-goals)` list from `docs/stability.md`. After v0.13.0 ships, the polish list is empty — every previously-deferred item shipped at scoped depth. The only thing blocking v1.0.0 declaration is the 3 external/temporal items (demo repo, wider adoption, regression-caught-once).
+
+### Sections shipped
+
+- **Section A — H7 extensions**: multi-installation `which -a` reporting in `/unpublish` Phase −1.1 (surface conflicting tool installations); submodule state detection in new Phase −1.6b (HARD STOP if submodules unsynced/conflicted, WARN if uninitialized).
+- **Section B — Proactive rate-limit tracker (Tier-4 #1)**: new `gh_with_rate_tracker` helper in `/unpublish` Phase −1.9b that reads X-RateLimit-Remaining via `gh api rate_limit` periodically and proactively sleeps before hitting 429. Falls through to H8 reactive backoff as the safety net. Applied to `/status` Phase 2 gh fan-out.
+- **Section C — Comprehensive npm BCL table (Tier-4 #2)**: documents every npm subcommand solo-npm invokes + cross-version variations + defensive-parse convention. Centralized in `/unpublish` Phase −1.4b extension; sibling skills apply the convention at each call site they make.
+- **Section D — `gh` GraphQL fan-in for `/deps` (Tier-4 #3)**: extends the v0.12.0 `/status` GraphQL pattern to `/deps` Phase 3 release-notes lookup for major-bump batches. Threshold: >5 unique upstream repos. Saves 5–15s on large dep batches.
+- **Section E — Shell-safety hardening Phase 0.5b (Tier-4 #4)**: rejects shell metacharacters (`;`, `&`, `|`, backtick, `$`, parens, redirects, control chars) in extracted name/scope/tag/version slots after Phase 0.5 regex passes. Applied universally; canonical in `/unpublish`. Special handling for `MESSAGE` slots (relaxed; passed via env-var to avoid shell-interpolation context).
+- **Section F — `/audit` summary-first parse (Tier-4 #5)**: Phase 1 parses severity counts first, then drills into Tier 1/2 advisory detail only; defers Tier 3/4 detail to opt-in `--full` flag. Avoids token-budget truncation on >500-dep repos that would silently miss advisories.
+- **Section G — `/verify` CRLF-in-tarball detection (Tier-4 #8)**: extends v0.12.0 J's `core.autocrlf` warning with detection of **actual CRLF in published bin scripts / shebang files / `.sh` files**. HARD STOP if found — these break Unix consumers (`#!/usr/bin/env node\r` fails to parse). Better implementation than elevating the v0.12.0 J WARN to STOP.
+
+### Tier-4 items shipped (and their stability.md correspondence)
+
+| Tier-4 # | Section | Where |
+|---|---|---|
+| 1. Concurrent rate-limit tracker | B | unpublish Phase −1.9b + status |
+| 2. Full npm BCL | C | unpublish Phase −1.4b extension |
+| 3. gh GraphQL beyond /status | D | deps Phase 3 |
+| 4. AI-prompt injection (shell-safety) | E | unpublish Phase 0.5b + 5 siblings |
+| 5. Audit output truncation | F | audit Phase 1 |
+| 6. Submodule state detection | A | unpublish Phase −1.6b |
+| 7. Tool version shadowing (multi-install info) | A | unpublish Phase −1.1 |
+| 8. CRLF as STOP (re-framed: actual CRLF in bin scripts) | G | verify Tier 3 |
+
+### Why minor (not patch)
+
+New shell-safety check is observably stricter (rejects values with `$` etc.) — some users may see new STOPs. New CRLF-in-tarball check is an entirely new HARD STOP class. Following conventional commits → minor bump.
+
+### v1.0.0 status
+
+After v0.13.0, the entire pre-v1.0.0 code-level work is complete. The `Post-v1.0.0 polish (finalized non-goals)` list in `docs/stability.md` is being **removed entirely** because every item shipped. Only 3 external/temporal items remain blocking v1.0.0:
+1. Demo / showcase repo (`solo-npm-example`)
+2. Wider adoption signal (external user beyond rfc-bcp47/ncbijs/npm-trust)
+3. Skill-spec drift caught once via the regression checklist
+
+Code-side, solo-npm is v1.0.0-ready.
+
+### Upgrading
+
+`/reload-plugins` after marketplace update. No state.json migration. The new shell-safety check rejects more inputs at extraction; if you've been passing values that contain shell metacharacters (rare), the skill will surface a STOP with a diagnostic — fix the input value, no skill-side change required.
+
 ## v0.12.0 — Tier-3 stability comprehensive pass (H8 rate-limit + SSL + SIGINT + npm BCL + workspace edges + gh GraphQL)
 
 Closes all 9 Tier-3 stability items previously deferred per `docs/stability.md`, plus 3 adjacent items (J/K/L) that fit the same category. With v0.12.0 shipped, **the code-level v1.0.0 entry criteria are complete**. What remains is external/temporal: demo repo, wider adoption signal, regression catch-once.

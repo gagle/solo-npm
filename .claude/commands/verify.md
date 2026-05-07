@@ -224,6 +224,67 @@ Unpublish without rotation is **not sufficient**: any consumer who already insta
 
 Auto-fix is NOT offered for secrets — the user must do `git rm --cached` themselves and rotate the credentials manually. Auto-removing the file from the tarball without git+rotation steps would leave secrets in `git log` history, which is worse than a published tarball.
 
+#### CRLF-in-tarball detection (Tier-4 #8, v0.13.0) — HARD STOP for executable scripts
+
+The v0.12.0 J check detects `core.autocrlf=true` and warns. v0.13.0 extends this with **detection of actual CRLF in critical published files** — bin scripts, shebang files, `.sh` files. CRLF in those is a real consumer-breaking problem on Unix (the shebang line `#!/usr/bin/env node\r` doesn't parse).
+
+After `npm pack --dry-run --json` provides the file list, scan critical files for CRLF:
+
+```bash
+# Files where CRLF causes runtime breakage on Unix consumers:
+CRITICAL_PATTERNS='bin/.*|.*\.(sh|bash|zsh)$|^[^/]+$'   # bin/* + *.sh|.bash|.zsh + repo-root scripts
+
+# Helper: extract a file from the would-be tarball without actually publishing
+# pnpm pack writes a .tgz to disk in --dry-run? No — pnpm/npm --dry-run is metadata-only.
+# We need to actually pack to a temp dir and inspect:
+TMP_TARBALL=$(mktemp -d)/check.tgz
+timeout 60 npm pack --pack-destination "$(dirname "$TMP_TARBALL")" >/dev/null 2>&1 || {
+  echo "WARN: npm pack failed during CRLF check; skipping CRLF detection"
+  return 0
+}
+TARBALL=$(ls "$(dirname "$TMP_TARBALL")"/*.tgz | head -1)
+
+# Extract + scan
+EXTRACT_DIR=$(mktemp -d)
+tar -xzf "$TARBALL" -C "$EXTRACT_DIR" 2>/dev/null
+CRLF_FILES=()
+for f in $(find "$EXTRACT_DIR" -type f); do
+  REL_PATH="${f#"$EXTRACT_DIR"/package/}"
+  # Match REL_PATH against CRITICAL_PATTERNS
+  if echo "$REL_PATH" | grep -qE "$CRITICAL_PATTERNS"; then
+    # Check first 4KB for CRLF (avoid scanning entire large files)
+    if head -c 4096 "$f" | grep -q $'\r'; then
+      CRLF_FILES+=("$REL_PATH")
+    fi
+  fi
+done
+
+# Cleanup
+rm -rf "$EXTRACT_DIR" "$(dirname "$TMP_TARBALL")"
+
+if [ ${#CRLF_FILES[@]} -gt 0 ]; then
+  echo "❌ CRLF DETECTED IN PUBLISHED EXECUTABLES"
+  echo
+  echo "The following files in your tarball contain Windows CRLF line endings:"
+  printf '  %s\n' "${CRLF_FILES[@]}"
+  echo
+  echo "This breaks Unix consumers. The classic case: a shebang line"
+  echo "  #!/usr/bin/env node\\r"
+  echo "fails to parse on Linux/macOS — the kernel sees an interpreter named 'node\\r' and errors with 'no such file'."
+  echo
+  echo "Fix BEFORE releasing:"
+  echo "  1. Set core.autocrlf=input for this repo: git config core.autocrlf input"
+  echo "  2. Re-checkout the affected files: git checkout -- <file>"
+  echo "     (Or set in .gitattributes: '*.sh text eol=lf' / 'bin/* text eol=lf')"
+  echo "  3. Re-run /solo-npm:verify --pkg-check-only."
+  echo
+  echo "This is a HARD STOP. /release will not proceed."
+  exit 1
+fi
+```
+
+Scope: only files matching `CRITICAL_PATTERNS` (bin scripts + shell scripts + repo-root scripts). Don't false-positive on docs/config files where CRLF is harmless on Unix consumers. The check only fires on *.tgz extraction, so it's `npm pack`-bound — for repos that don't actually pack executables, it's a free no-op.
+
 #### Auto-fix offer: suggest `files` allowlist
 
 When test files, lockfiles, or editor configs are detected AND there's no `files` field in `package.json`:

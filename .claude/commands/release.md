@@ -104,6 +104,10 @@ After Phase 0 pre-fills slots, validate every extracted value against the canoni
 
 On validation failure, STOP with the diagnostic from `/unpublish` Phase 0.5 (slot + value + expected format).
 
+## Phase 0.5b — Shell-safety hardening (Tier-4 #4 from v0.13.0)
+
+After regex validation passes, apply the shell-safety check from `/unpublish` Phase 0.5b (canonical) to every extracted slot that flows into shell interpolation: `NEXT_VERSION` (passed to `git tag`, `git push`, `npm version`), package name (in monorepo subset). Reject high-risk shell metacharacters (`;`, `&`, `|`, backtick, `$`, parens, redirects, control chars). Skill body uses double-quoted interpolation at every command-construction site as the second line of defense.
+
 ## Phase A — Pre-flight
 
 ### A.1 Working tree must be clean

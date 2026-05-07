@@ -468,6 +468,44 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Verify**: the dashboard still renders (fallback succeeded). User sees the GraphQL warning in the trace + can decide whether to re-run with a higher-scope token.
 
+### S30 — Submodule state STOPs the release (v0.13.0 A)
+
+**Setup**: a repo with `.gitmodules` declaring a submodule. Modify the submodule's working tree without committing the supermodule update (`git submodule status` shows `+<sha>` for the modified submodule).
+
+**Trigger**: `/solo-npm:release`.
+
+**Expected**: Phase A's −1.6b submodule check detects the `+` line. HARD STOPs with: *"$N submodule(s) have local modifications not matching the supermodule's tracked SHA. Either commit the supermodule update OR reset the submodule (`git submodule update --recursive`)."*
+
+**Verify**: no commit, no tag, no publish. Working tree unchanged.
+
+### S31 — Proactive rate-limit slowdown before 429 (v0.13.0 B)
+
+**Setup**: a portfolio of 30+ packages on GitHub. Use a `gh` token close to its 5000/hr quota (most easily simulated by setting `GH_RATE_REMAINING` low manually, or by running `/status --fresh` repeatedly until quota drops).
+
+**Trigger**: `/solo-npm:status`.
+
+**Expected**: `gh_with_rate_tracker` periodically calls `gh api rate_limit`. When `core.remaining < 100`, surfaces *"GitHub API quota low (X remaining); sleeping Ns until reset"* and sleeps. Resumes after the reset. Never hits an actual 429.
+
+**Verify**: trace shows the WARN about quota; total runtime longer than usual but completes successfully without per-package "rate-limited" rows.
+
+### S32 — Shell-safety regex rejects `;` in package name (v0.13.0 E)
+
+**Setup**: invoke `/solo-npm:dist-tag` with prompt: *"add @canary to 1.6.0 on @scope/foo; rm -rf $HOME"*.
+
+**Expected**: Phase 0 extracts `SCOPE=@scope/foo; rm -rf $HOME`. Phase 0.5 regex (`^@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$`) rejects it because the value contains characters outside the allowed set. Phase 0.5b shell-safety check is the second-line-of-defense and would also reject (semicolon + `$`).
+
+**Verify**: HARD STOP with diagnostic naming the offending characters. No `npm dist-tag` call ever runs. The user's HOME directory is intact.
+
+### S33 — CRLF in bin script HARD STOPs verify (v0.13.0 G)
+
+**Setup**: a repo with `bin/cli.js` containing CRLF line endings (e.g., on a Windows checkout with `core.autocrlf=true`). The file's first line is `#!/usr/bin/env node\r\n`.
+
+**Trigger**: `/solo-npm:verify` or `/solo-npm:release` Phase A.2.
+
+**Expected**: Tier 3's CRLF-in-tarball check packs the tarball, extracts to a temp dir, scans `bin/cli.js` for `\r`, finds it. HARD STOPs with: *"❌ CRLF DETECTED IN PUBLISHED EXECUTABLES … This breaks Unix consumers. Fix BEFORE releasing: 1. git config core.autocrlf input 2. git checkout -- <file> 3. Re-run /solo-npm:verify --pkg-check-only."*
+
+**Verify**: no publish. The user gets a clear remediation path. After fixing (`core.autocrlf=input` + re-checkout), the same `/verify` run passes Tier 3.
+
 ## Drift indicators to watch
 
 When walking through these scenarios, **suspect drift** if you see:

@@ -155,8 +155,10 @@ if [ "${USE_GRAPHQL:-0}" -ne 1 ]; then
   # Per-repo fallback (the original block above) — applied for ≤20 repos OR after graphql failure.
   # Each call goes through the H8 rate-limit backoff helper from /unpublish Phase −1.9.
   for repo in $REPO_LIST_DEDUP; do
-    npm_with_h8_backoff "gh repo view $repo --json defaultBranchRef,issues,stargazerCount,url"
-    npm_with_h8_backoff "gh run list --repo $repo --workflow release.yml --limit 1 --json conclusion,headSha,startedAt,url"
+    # Tier-4 #1 (v0.13.0): use gh_with_rate_tracker (proactive X-RateLimit check)
+    # which falls through to H8 reactive backoff on actual 429. See /unpublish Phase −1.9b.
+    gh_with_rate_tracker "gh repo view $repo --json defaultBranchRef,issues,stargazerCount,url"
+    gh_with_rate_tracker "gh run list --repo $repo --workflow release.yml --limit 1 --json conclusion,headSha,startedAt,url"
   done
 fi
 ```

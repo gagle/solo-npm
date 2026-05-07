@@ -53,6 +53,18 @@ After Phase 0 pre-fills slots, validate against the canonical regex framework in
 
 On validation failure, STOP with diagnostic.
 
+## Phase 0.5b — Shell-safety hardening (Tier-4 #4 from v0.13.0)
+
+Apply the shell-safety check from `/unpublish` Phase 0.5b (canonical) to `RANGE`, `SCOPE`, and package name slots. **Special handling for `MESSAGE`**: free-text deprecation messages may legitimately contain characters like `(`, `)` (parenthesized version like "v1.x is EOL (use v2)"). Phase 0.5b's strict blacklist would reject those.
+
+For `MESSAGE`, use a relaxed check: reject only the genuinely-dangerous chars (`;`, `&`, `|`, backtick, `$(`, `>`, `<`) and require the message be passed via env-var or single-quoted shell argument when invoking `npm deprecate "$NAME" "$MESSAGE"`. Phase C executes:
+
+```bash
+NPM_DEPR_MSG="$MESSAGE" sh -c 'npm deprecate "$0" "$NPM_DEPR_MSG"' "$NAME"
+```
+
+This passes `MESSAGE` via env-var (no shell-interpolation context), so `(`, `)`, quotes inside the message are inert.
+
 ## Phase A — Pre-flight + state read
 
 1. **Auth check** (same handoff as `/solo-npm:dist-tag`): `npm whoami`. If not authenticated, surface foolproof `npm login` instructions + AskUserQuestion gate.

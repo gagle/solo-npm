@@ -61,6 +61,17 @@ require_tool() {  # args: $1 = tool name, $2 = optional minimum-version semver, 
     VERSION_OUT=$("$1" --version 2>&1 | head -1)
     echo "  ✓ $1 detected: $VERSION_OUT"
   fi
+
+  # Multi-installation detection (Tier-4 #7, v0.13.0): if multiple copies are on PATH,
+  # surface them as a diagnostic so the user knows which one we got.
+  ALL_PATHS=$(which -a "$1" 2>/dev/null)
+  PATH_COUNT=$(echo "$ALL_PATHS" | wc -l | tr -d ' ')
+  if [ "$PATH_COUNT" -gt 1 ]; then
+    USED_PATH=$(command -v "$1")
+    echo "  ℹ multiple '$1' installations on PATH (using $USED_PATH):"
+    echo "$ALL_PATHS" | sed 's/^/      /'
+    echo "      If the wrong one was selected, reorder PATH or use the explicit path."
+  fi
 }
 
 require_tool npm  ""  "https://nodejs.org"
@@ -208,6 +219,54 @@ In skill bodies, document the fallback inline rather than assuming the happy-pat
 | `npm version` output | Older versions print prefixed `v`; newer print bare semver | Always parse with semver lib, not raw string match |
 | `npm config get <key>` returning `undefined` literal vs empty string | Older npm prints `undefined`; newer prints empty | Normalize: `[ -z "$VAL" ] || [ "$VAL" = "undefined" ]` → treat as unset |
 
+#### Comprehensive BCL table (Tier-4 #2, v0.13.0)
+
+Beyond the high-impact cases above, here's the full enumeration of every `npm <subcmd>` call solo-npm makes + its known cross-version variations + the convention we apply at every call site.
+
+| npm call | Skills using it | Cross-version variation | Convention |
+|---|---|---|---|
+| `npm publish` | release (CI), prerelease (CI), hotfix (CI), init Phase 2c | npm 9+ supports `--provenance=true` (OIDC-required); older needs explicit auth token | OIDC path goes through CI — uniform. Local Phase 2c uses `--provenance=false` to bypass attestation (chicken-and-egg) |
+| `npm publish --json` | release C.7 verify (post-publish read) | Schema introduced in npm 9; older versions emit text-only on stdout | Don't depend on `--json` post-publish output; use `npm view <pkg>@<v>` afterwards instead (already the convention) |
+| `npm view <pkg>` | All read-path skills | Returns text by default; `--json` for parseable | Always pair with `--json 2>/dev/null` per v0.10.1 stderr-redirect convention |
+| `npm view <pkg> <field>` | many skills | `<field>` syntax (`time.<v>`, `dist-tags.next`) supported npm 7+ | Treat absent field as empty (jq `// 0`); detect undefined per −1.4b row 7 |
+| `npm view <pkg> versions --json` | deprecate, dist-tag | Empty array on never-published packages; missing field on private-registry edge cases | Treat empty array as "no versions" gracefully, surface "no versions match" not crash |
+| `npm view <pkg> dist-tags --json` | dist-tag, status, /audit | Returns `{}` on never-published; missing field on errors | Treat `{}` as "no dist-tags configured"; this differs from "registry returned error" |
+| `npm view <pkg>@<v> deprecated` | deprecate verify | Returns empty string for not-deprecated; full message for deprecated | Compare exact-string match; empty = not-deprecated |
+| `npm view <pkg>@<v> time.<v>` | unpublish A.2 (publish-age check) | npm 7/8: ISO-8601; some private registries: Unix epoch ms | Per −1.4b table |
+| `npm view <pkg>@<v> dist.attestations` | release C.7 (provenance check), trust verify | Missing on private registries / pre-Sigstore packages | Per −1.4b table |
+| `npm version <bump>` | release C.1 (auto-bump), prerelease C.1, hotfix E.2 | npm 6 prints `v1.2.3`; npm 7+ prints `1.2.3` | Always pipe through `sed 's/^v//'` to normalize |
+| `npm version --no-git-tag-version <bump>` | hotfix (publishConfig.tag manipulation) | Stable across npm 7+ | None |
+| `npm whoami` | trust, release A.3, every commit-and-push skill, /unpublish C.0 | Some configurations return `@username` (with `@` prefix) | `WHOAMI=${WHOAMI#@}` to strip; per −1.4b table |
+| `npm whoami --registry <url>` | trust (per-package auth verify) | Same `@` prefix variation; some npm versions ignore `--registry` flag for npmjs.org | Detect via `npm config get registry`; only invoke `--registry` if non-default |
+| `npm login` | Manual user step (web 2FA flow) | Stable across npm 6+; user-driven | None |
+| `npm logout` | Not invoked by skills | n/a | n/a |
+| `npm dist-tag add/rm/ls` | dist-tag C, release C.7 (verify), prerelease | Stable across npm 7+; npm 6 doesn't support `--json` on `ls` | Skill targets npm 7+ baseline (per package.json#engines) |
+| `npm deprecate <pkg> "<msg>"` | deprecate C, unpublish C.3 (rename redirect) | Stable; message length capped at ~1024 chars (registry-side) | Phase A.5 already validates message length |
+| `npm owner add/rm/ls` | owner C, unpublish A.2 (sole-owner check) | `ls` returns text by default; `--json` added npm 7+ | Always use `--json` per E from v0.10.0 |
+| `npm unpublish <pkg>@<v>` | unpublish C.1 | Stable; subject to npm policy (72h, dependents, etc.) | None — policy enforcement is registry-side |
+| `npm unpublish <pkg> --force` | unpublish C.2 | Stable | None |
+| `npm audit --json` | audit Phase 1, deps Phase 1c | npm 6: `{actions[], advisories{}, metadata{}}`; npm 7+: `{vulnerabilities{}, metadata{}}` | Per −1.4b table; /audit Phase 1 has BCL detection |
+| `npm outdated --json` | deps Phase 1b | Schema changed across npm 7→8→9 (`dependencyType` field added in npm 8) | Defensive: check for field presence, fall back to dep-tree walk if missing |
+| `npm install <pkg>@<target>` | deps Phase 4b | Stable; lockfile semantics differ pnpm/yarn/npm | Detected per package manager in Phase 1a |
+| `npm pack --dry-run --json` | verify Tier 3, release C.7.6 | `unpackedSize`, `entryCount` added npm 8+ | Per −1.4c |
+| `npm pack --dry-run` (no --json, fallback) | yarn 1.x in /verify Tier 3 | Text output; format stable across yarn 1.x | Already documented as fallback in /verify Tier 3 |
+| `npm config get <key>` | init (Tier-3 E), trust pre-flight | Returns `undefined` literal on older versions | Per `−1.4b` last row |
+| `npm config get @<scope>:registry` | init (Tier-3 E) | Stable across npm 6+ | Same `undefined` normalization |
+| `npm config set <key> <value>` | not invoked by skills (we read, not write) | n/a | n/a |
+| `npm-trust --doctor --json` | release A.3, init Phase 2a, status, audit Phase 4 trust prefix | npm-trust@^0.4 schema (per D3 pin) | Defensive: check `schema.Version`; fall back to per-step discovery if doctor unavailable |
+| `npm-trust verify` | trust Phase 6 | Same schema | Same |
+| `npm-trust list --json` | trust Phase 1 | Same | Same |
+| `npm-trust configure --auto` | trust Phase 9 | Same | Same; web-2FA handoff per existing trust skill body |
+
+**Convention at every call site**: 
+1. Wrap the call in `timeout 30` (or longer for CI watch)
+2. Redirect stderr `2>/dev/null` if piping to a JSON parser
+3. Check return code; on failure, classify per −1.10 SSL / H1 OTP / H4 propagation / general npm error
+4. On success, validate expected fields exist before reading; fall back per the table above
+5. For mutation calls (publish/deprecate/dist-tag/owner/unpublish), apply H1 OTP + H3 auth-race + H5 lock + H8 backoff
+
+This BCL table is the canonical reference. Sibling skills don't duplicate the table; they apply the convention at each call site they make.
+
 ### −1.4c `npm pack --dry-run` defensive parsing (D4)
 
 `npm pack --dry-run --json` output schema:
@@ -304,6 +363,50 @@ fi
 ```
 
 Apply universally in Phase A of every skill that mutates git or scaffolding state.
+
+### −1.6b Submodule state detection (Tier-4 #6, v0.13.0)
+
+Repos with git submodules need consistent submodule state across the supermodule's working tree, otherwise published tarballs can ship stale submodule content (the supermodule's tracked submodule SHA != what's actually checked out).
+
+```bash
+# Only run if .gitmodules exists; pure no-op for repos without submodules
+if [ -f .gitmodules ]; then
+  SUBMODULE_STATUS=$(git submodule status 2>/dev/null)
+
+  # Detect uninitialized submodules (lines starting with "-")
+  UNINIT=$(echo "$SUBMODULE_STATUS" | grep -c '^-' || true)
+  # Detect modified submodules (lines starting with "+")
+  MODIFIED=$(echo "$SUBMODULE_STATUS" | grep -c '^+' || true)
+  # Detect merge conflicts in submodules (lines starting with "U")
+  CONFLICTED=$(echo "$SUBMODULE_STATUS" | grep -c '^U' || true)
+
+  if [ "$CONFLICTED" -gt 0 ]; then
+    echo "ERROR: $CONFLICTED submodule(s) have unresolved merge conflicts."
+    echo "       Resolve via: git submodule update --remote / --init / etc."
+    echo "       Releasing in this state would publish a tarball with broken submodule refs."
+    exit 1
+  fi
+
+  if [ "$MODIFIED" -gt 0 ]; then
+    echo "ERROR: $MODIFIED submodule(s) have local modifications not matching the supermodule's tracked SHA."
+    echo "       Lines marked with '+':"
+    echo "$SUBMODULE_STATUS" | grep '^+' | sed 's/^/         /'
+    echo "       Either commit the supermodule update (git add <submodule-path> && git commit)"
+    echo "       OR reset the submodule (git submodule update --recursive)."
+    exit 1
+  fi
+
+  if [ "$UNINIT" -gt 0 ]; then
+    echo "WARN: $UNINIT submodule(s) are uninitialized (haven't been cloned)."
+    echo "      If your published tarball depends on submodule content, run:"
+    echo "         git submodule update --init --recursive"
+    echo "      Then re-invoke. (If submodules are dev-only and excluded from the tarball, this is safe to ignore.)"
+    # Non-fatal: dev-only submodules may legitimately be uninitialized in CI/release contexts.
+  fi
+fi
+```
+
+Apply in Phase A of skills that touch git state for release: release, prerelease, hotfix, deps. Skip for read-only skills (status, audit) and CLI-only skills (deprecate, dist-tag, owner, unpublish itself).
 
 ### −1.7 `gh` pre-flight (A3, hoisted from per-call to Phase −1)
 
@@ -403,6 +506,53 @@ npm_with_h8_backoff() {
 ```
 
 Apply selectively: read-only `npm view` calls in fan-out paths benefit. Single-call paths (`/release` C.7 verify) don't need backoff — propagation lag (H4) is the dominant failure there, and H4's 3×5s retry already covers it.
+
+### −1.9b Proactive rate-limit tracker (Tier-4 #1, v0.13.0) — for `gh` API only
+
+H8 (above) is **reactive** — kicks in after 429. For GitHub API specifically, `gh` exposes `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers, allowing a **proactive** tracker that slows down BEFORE hitting 429.
+
+**Why gh-only**: npm registry doesn't reliably emit X-RateLimit headers (some endpoints, undocumented). deps.dev doesn't document rate limits. The tracker is genuinely useful only against gh's documented 5000/hr authenticated quota.
+
+```bash
+# Canonical helper: gh_with_rate_tracker
+# Reads X-RateLimit-Remaining from response; if low, sleeps until X-RateLimit-Reset.
+# Falls back to H8 reactive backoff on actual 429.
+gh_with_rate_tracker() {
+  local CMD="$1"
+  # gh api supports --include to surface response headers in stdout
+  # For wrapper commands (gh repo view, gh run list), capture via -H "Accept: application/vnd.github+json" + extract from gh's debug log
+
+  # Simpler: every N calls, do a quota check via `gh api rate_limit`
+  if [ -z "$GH_RATE_LAST_CHECK" ] || [ $(($(date +%s) - GH_RATE_LAST_CHECK)) -gt 60 ]; then
+    QUOTA_JSON=$(timeout 10 gh api rate_limit 2>/dev/null)
+    if [ -n "$QUOTA_JSON" ]; then
+      GH_RATE_REMAINING=$(echo "$QUOTA_JSON" | jq -r '.resources.core.remaining // 5000')
+      GH_RATE_RESET=$(echo "$QUOTA_JSON" | jq -r '.resources.core.reset // 0')
+      GH_RATE_LAST_CHECK=$(date +%s)
+    fi
+  fi
+
+  # If budget low (< 100 calls remaining and reset > 30s away), sleep proactively
+  if [ -n "$GH_RATE_REMAINING" ] && [ "$GH_RATE_REMAINING" -lt 100 ]; then
+    NOW=$(date +%s)
+    WAIT=$((GH_RATE_RESET - NOW))
+    if [ $WAIT -gt 0 ] && [ $WAIT -lt 600 ]; then
+      echo "WARN: GitHub API quota low ($GH_RATE_REMAINING remaining); sleeping ${WAIT}s until reset" >&2
+      sleep $WAIT
+      # Refresh after sleep
+      GH_RATE_LAST_CHECK=""
+    elif [ $WAIT -ge 600 ]; then
+      echo "WARN: GitHub API quota low ($GH_RATE_REMAINING remaining); reset in $((WAIT/60))min." >&2
+      echo "      Falling through to H8 reactive backoff if 429 hits." >&2
+    fi
+  fi
+
+  # Now run the actual command with H8 reactive backoff as the safety net
+  npm_with_h8_backoff "$CMD"
+}
+```
+
+Apply in `/status` Phase 2 around the per-repo `gh repo view` / `gh run list` fan-out — the highest-impact case (30+ repo portfolios). Don't apply at every single gh call site; the helper invokes the rate check at a 60s interval, so wrapping the fan-out loop is enough.
 
 ### −1.10 SSL/TLS error detection + remediation (Tier-3 B, NEW v0.12.0)
 
@@ -524,6 +674,73 @@ fi
 ```
 
 For `/unpublish`, the canonical extracted slots needing validation are: `OLD_NAME`, `NEW_NAME`, `VERSION`. For sibling skills, the relevant slots vary — they reference this canonical pattern and apply only the regexes for slots they actually extract.
+
+## Phase 0.5b — Shell-safety hardening (Tier-4 #4, v0.13.0)
+
+Phase 0.5 regex validation rejects malformed semver/identifier/scope-name. **It does NOT reject shell metacharacters that pass the regex but flow into shell interpolation downstream**. Example: a `MESSAGE` slot containing `; rm -rf $HOME` passes the regex (it's allowed as a deprecation message), but if any downstream skill body interpolates `$MESSAGE` into a shell command without quoting, the user just got their HOME wiped.
+
+Mitigations applied at two boundaries:
+
+### 0.5b.1 Reject high-risk shell metacharacters in extracted slots
+
+For slots that flow into shell command construction (NAME, SCOPE, TAG, RANGE; not MESSAGE which is registry-bound text):
+
+```bash
+# Shell metacharacters that should never appear in name/tag/range slots:
+# ;  &  |  `  $  (  )  <  >  newline  carriage-return
+shell_safety_check() {
+  local SLOT_NAME="$1"
+  local SLOT_VALUE="$2"
+  if echo "$SLOT_VALUE" | LC_ALL=C grep -qE '[;&|`$()<>]|[[:cntrl:]]'; then
+    echo "ERROR: extracted $SLOT_NAME='$SLOT_VALUE' contains shell metacharacters."
+    echo "       Phase 0.5 regex passed but shell-safety check rejected — these characters"
+    echo "       would be interpreted by a downstream shell interpolation:"
+    echo "         ;  &  |  \`  \$  (  )  <  >  control-chars"
+    echo
+    echo "       This is a strict-safety refusal. If you genuinely need one of these characters"
+    echo "       in your value (rare, e.g., a registry URL with a port), invoke the underlying"
+    echo "       command manually — solo-npm refuses to participate."
+    exit 1
+  fi
+}
+
+# Apply to every extracted slot that will flow into shell interpolation:
+shell_safety_check "OLD_NAME" "$OLD_NAME"
+shell_safety_check "NEW_NAME" "$NEW_NAME"
+shell_safety_check "VERSION" "$VERSION"
+```
+
+### 0.5b.2 Always quote shell interpolation points in skill bodies
+
+The convention at every shell-interpolation site:
+
+```bash
+# WRONG — shell interprets metacharacters in $NAME:
+npm view $NAME --json
+
+# CORRECT — double quotes prevent shell expansion:
+npm view "$NAME" --json
+
+# Even more conservative for npm calls — pass the value via stdin or env var to avoid
+# any argument-splitting ambiguity:
+NPM_NAME="$NAME" timeout 30 sh -c 'npm view "$NPM_NAME" --json' 2>/dev/null
+```
+
+The H1/H4/H8 wrappers from earlier sections all already use double-quoted interpolation. Sibling skills that construct shell commands need to maintain this convention; the shell-safety check at extraction is the second line of defense.
+
+For MESSAGE / commit-message / deprecation-message slots that contain user free-text, **shell interpolation must always be via single-quoted strings** (or via env-var pass-through). E.g.:
+
+```bash
+# WRONG: $MSG could break out of the double-quoted context:
+git commit -m "chore: release $MSG"
+
+# CORRECT: pass via heredoc or single-quoted:
+git commit -m "chore: release v${NEXT_VERSION}"   # don't put user free-text in the commit message at all
+# OR via env var:
+COMMIT_MSG="$MSG" git commit -F <(echo "$COMMIT_MSG")
+```
+
+Shell-safety hardening applies in `/unpublish` (canonical here), `/release` Phase 0.5b, `/prerelease` Phase 0.5b, `/hotfix` Phase 0.5b, `/dist-tag` Phase 0.5b, `/deprecate` Phase 0.5b. Each references this canonical block + applies `shell_safety_check` to its skill-specific slots.
 
 ## Phase A — Pre-flight + per-version eligibility
 

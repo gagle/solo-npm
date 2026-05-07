@@ -61,6 +61,10 @@ After Phase 0 pre-fills slots, validate against the canonical regex framework in
 
 On validation failure, STOP with diagnostic.
 
+## Phase 0.5b — Shell-safety hardening (Tier-4 #4 from v0.13.0)
+
+Apply the shell-safety check from `/unpublish` Phase 0.5b (canonical) to `TAG`, `VERSION`, `SCOPE`, and package name slots. Same metacharacter blacklist + double-quoted interpolation convention. Particularly important for `TAG` since it's interpolated directly into `npm dist-tag add/rm` arguments.
+
 ## Phase A — Pre-flight + state read
 
 1. **Auth check**: run `npm whoami`. If exit code != 0 (not authenticated), surface foolproof handoff:

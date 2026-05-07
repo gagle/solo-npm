@@ -45,6 +45,10 @@ After Phase 0 pre-fills slots, validate against the canonical regex framework in
 
 On validation failure, STOP with diagnostic.
 
+## Phase 0.5b — Shell-safety hardening (Tier-4 #4 from v0.13.0)
+
+Apply the shell-safety check from `/unpublish` Phase 0.5b (canonical) to `TARGET_MAJOR`, `CHERRY_PICK_SHA`, and `NEXT_VERSION` slots. Same metacharacter blacklist + double-quoted interpolation convention.
+
 ## Phase A — Pre-flight + state detection
 
 1. Working tree clean (`git status --porcelain`); else STOP with the standard "commit or stash first" message.
