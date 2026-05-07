@@ -166,7 +166,9 @@ different types (runtime in one, dev in another), classify by the
 
 ### Trust audit prefix
 
-At the top of the report, surface trust state from `npm-trust --doctor`:
+At the top of the report, surface trust state from a single
+`npm-trust --verify-provenance --json` call (since v0.17.0 / npm-trust
+0.11.0 — replaces N per-package `npm view dist.attestations` calls):
 
 ```
 Trust audit:

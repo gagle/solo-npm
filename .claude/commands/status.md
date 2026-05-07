@@ -34,23 +34,39 @@ Three phases. Read-only — no state changes, no commits, no API mutations.
 
 ## Phase 1 — Discover packages
 
-Default: workspace-aware via `npm-trust --doctor --json` (already invoked
-in Phase 2 for trust state — reuse the output).
+Default: workspace-aware via `npm-trust --doctor --json` (already
+invoked in Phase 2 for trust state — reuse the output).
 
 ```bash
 pnpm exec npm-trust --doctor --json --workflow release.yml 2>/dev/null
 ```
 
-The JSON's `workspace.packages[]` is the list. Each entry has `{ name,
-version, dir, private }`. Skip entries with `private: true`.
+The JSON has `workspace.packages[]` (the list) and (since v0.10.0)
+`packages[]` with rich per-package fields used to populate the
+dashboard rows directly:
 
-If the workspace is single-package, the list has one entry.
+- `latestVersion` — replaces a separate `npm view <pkg> version`.
+- `lastSuccessfulPublish` (ISO 8601) — replaces `npm view <pkg> time.<latest>`.
+- `unpackedSize` (since v0.11.0) — replaces `npm view <pkg> dist.unpackedSize`.
+- `perPackageIssueCodes` — package-scoped doctor warnings without
+  re-walking the global `issues[]` array.
 
-If `--doctor` isn't available (older CLI), fall back to:
+For provenance + attestation count + last-attestation-time per
+package, run a single bulk call instead of N separate `npm view <pkg>
+dist.attestations`:
 
-- Single-package: read `package.json#name`
-- pnpm workspace: walk `pnpm-workspace.yaml#packages` globs, read each `package.json#name`
-- npm/yarn workspace: walk `package.json#workspaces` globs
+```bash
+pnpm exec npm-trust --verify-provenance --json --auto 2>/dev/null
+```
+
+Returns a `VerifyProvenanceReport` (schemaVersion 2, since v0.11.0).
+Each entry: `{ pkg, latestVersion, provenancePresent, attestationCount,
+lastAttestationAt, unpackedSize? }`.
+
+For older CLIs, fall back to the per-`npm view` approach below — but
+this requires npm-trust < 0.10 which is no longer pin-compatible per
+`/trust` Phase −0; if you see that branch trigger, the user is on an
+out-of-date install.
 
 **Optional explicit scope mode**: if the user invokes `/solo-npm:status
 --scope @myorg`, fetch the package list from the npm registry instead:

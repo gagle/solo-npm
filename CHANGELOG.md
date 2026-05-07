@@ -1,5 +1,94 @@
 # Changelog
 
+## v0.17.0 — Cross-tool integration overhaul (npm-trust ^0.11 + prepare-dist ^1.1)
+
+Pairs with `npm-trust@0.11.0` (released today) and `prepare-dist@1.1.0`
+(also released today). Together the three releases close a long-standing
+integration gap: solo-npm was parsing text output of npm-trust's `--list`
+and configure mid-flight, prepare-dist was disconnected from the
+publishing orchestration entirely, and the trust cache was time-only
+(blind to workflow file edits).
+
+### Pin bumps
+
+- **npm-trust**: `^0.9` → `^0.11`. Skipping 0.10 — every flag the
+  /trust skill exercises is shape-stable across 0.10 → 0.11; bump
+  goes straight to the latest minor.
+- **prepare-dist**: NEW pin `^1.1`. Used by `/init` Phase 0
+  (capabilities probe), `/init` Phase 1c (template variant), and
+  documented in `/release` Phase E.0 commentary.
+
+### Changed (deterministic, JSON-driven where possible)
+
+- **`/trust`** — Replaced text-parsing of `--list` (3 sites) and
+  configure (Step 9) with `--list --json` and `--json` modes. Now
+  branches on `ListReport.packages[].trustConfigured` and
+  `ConfigureReport.entries[].result` — no more substring matches.
+  Updated the version probe from `--auto` (v0.2.0+) to
+  `--capabilities` (v0.11.0+).
+- **`/release` Phase A.3** — Hot path now uses
+  `npm-trust --validate-only --json` (added in 0.10.0) instead of
+  `--doctor --json`. ~95% faster on the hot path: zero per-package
+  npm calls. Cold path is unchanged but additionally captures
+  `workflowSnapshot.fileHash` to enable content-aware cache
+  invalidation.
+- **`/release` Phase A.3 cache** — content-aware. State.json schema
+  v2 adds `trust.workflowFileHash`; the cold path triggers if the
+  hash mismatches the live `release.yml` even within the time-TTL.
+  Catches the "I edited release.yml but the time-TTL hasn't expired"
+  drift class.
+- **`/release` Phase C.7.6** — Bundle-size baseline (used by
+  `/verify` Tier 4) now reads from `VerifyProvenanceReport.packages[].unpackedSize`
+  (added in npm-trust 0.11.0 / schemaVersion 2). Fallback to the
+  per-package `npm view dist.unpackedSize` retained for older CLIs.
+- **`/status`** — Discovery + per-package data switched to single
+  bulk calls: `--doctor --json` for `latestVersion` /
+  `lastSuccessfulPublish` / `unpackedSize` / `perPackageIssueCodes`,
+  and `--verify-provenance --json` for `provenancePresent` /
+  `attestationCount` / `lastAttestationAt`. Eliminates O(N)
+  per-package npm view calls.
+- **`/audit`** — Trust audit prefix now uses
+  `--verify-provenance --json` instead of N individual
+  `npm view dist.attestations` calls.
+- **`/init` Phase 1c** — Workflow scaffold now consumes
+  `npm-trust --emit-workflow [--with-prepare-dist]` instead of the
+  inline YAML heredoc. Single source of truth: when GHA action
+  versions or the dist-tag rule change, npm-trust emits the new
+  template and solo-npm picks it up via the `^0.11` pin.
+
+### Added
+
+- **`/init` Phase 0 — Toolchain capabilities discovery**. Probes
+  `npm-trust --capabilities --json` and
+  `prepare-dist --capabilities --json` to detect installed tools at
+  runtime instead of hardcoding version assumptions. Drives the
+  Phase 1c template-variant choice and the H1-H8 error pattern map.
+- **State.json schema v2** with `trust.workflowFileHash`.
+  Auto-migrates from v1 on first read; first `/release` post-migrate
+  takes the cold path to populate the hash.
+- **Structured-exit-code → H1-H8 mapping** in `/trust`. Every
+  npm-trust invocation now gets a deterministic recovery path based
+  on the exit-code numeric (10/20/21/30/40/50/60) instead of stderr
+  grep.
+- **Phase E.0 (pre-publish prepare-dist transform)** documented in
+  `/release`'s Phase 1c template variant. The `--with-prepare-dist`
+  variant wires `gagle/prepare-dist@v1` between
+  `pnpm run build` and `pnpm publish`. Phase E.0 within the skill
+  body is implicit (the GHA workflow does it); the skill detects via
+  the Phase 0 capabilities probe whether the project uses
+  prepare-dist and selects the variant accordingly.
+
+### Migration notes
+
+- Existing `.solo-npm/state.json` files at `version: 1` are
+  auto-upgraded to `version: 2` on first read by adding
+  `trust.workflowFileHash: null`. The next `/release` cold-path run
+  populates the hash. No user action required.
+- Consumers running `/release` against pinned `npm-trust@^0.9` will
+  see the version probe report `TOO_OLD` (because v0.9 lacks
+  `--capabilities`). Upgrade to `^0.11` via
+  `pnpm add -D npm-trust@^0.11`.
+
 ## v0.16.0 — Phase −0 help mode + npm-trust pin bump + TOC for large skills + CHANGELOG condensation + manifest CI
 
 Mixed release: one new feature (Phase −0 help mode), one structural pin bump (npm-trust `^0.4` → `^0.9` after explicit verification), and four polish items (TOC for large skill bodies, CHANGELOG condensation, self-audit pass, manifest CI workflow).

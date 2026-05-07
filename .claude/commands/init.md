@@ -59,6 +59,36 @@ This skill applies the standard solo-npm error patterns where they're relevant. 
 - **H3 — Auth-window race**: applied between Phase 2a (`npm whoami` + AskUserQuestion gate "Done with login?") and Phase 2c (the actual `npm publish` call) — the user may have paused at 2b for minutes, so the session may have expired. The Phase 2c body re-checks `npm whoami` immediately before publish.
 - **H6 — Chain-target failure recovery**: chains into `/verify --pkg-check-only` (Phase 1d), `/trust` (Phase 3). When any chain target STOPs, capture the verbatim diagnostic and surface in `/init` context with retry/abort options. Don't silently swallow — the user needs to know whether trust setup completed or not.
 
+## Phase 0 — Toolchain capabilities discovery (v0.17.0+)
+
+Before scaffolding, probe the installed CLI tools to know which
+features are available and which template variant to use. This
+replaces hardcoded version assumptions with runtime detection.
+
+```bash
+# npm-trust capabilities (required for /trust, /release, /status)
+pnpm exec npm-trust --capabilities --json 2>/dev/null
+#   → { schemaVersion: 1, name: "npm-trust", version, features[], flags[],
+#       jsonSchemas[], exitCodes[] }
+
+# prepare-dist capabilities (optional — drives template variant choice)
+pnpm exec prepare-dist --capabilities --json 2>/dev/null
+#   → { schemaVersion: 1, name: "prepare-dist", version, features[], ... }
+```
+
+**Decisions taken from the descriptors**:
+
+- `npm-trust.version` ≥ `0.11.0` is required. If lower (or the probe
+  exits non-zero), STOP and direct the user to `pnpm add -D npm-trust@^0.11`.
+- If `prepare-dist` is detected (probe exits 0 OR `package.json#devDependencies.prepare-dist` is present), record `usePrepareDist: true` for use in Phase 1c. Phase 1c emits the template variant via `npm-trust --emit-workflow --with-prepare-dist`. Phase E.0 of `/release` will invoke `prepare-dist --json` between build and publish.
+- If neither tool is installed (a fresh repo, capability probes fail),
+  Phase 1a will offer `pnpm add -D npm-trust prepare-dist` as part of
+  the scaffold plan (the user decides whether prepare-dist is wanted).
+
+The capabilities descriptors are also used by the H1-H8 error-pattern
+catalog: `exitCodes[]` from each tool maps directly to the H-pattern
+table consumed by every chained skill.
+
 ## Phase 1 — Scaffold
 
 ### 1a. Detect existing repo state (silent reads)
@@ -194,7 +224,29 @@ If missing, pick template based on the registry kind decision in 1b.
 
 Both templates include a **dist-tag detection step** before publish so pre-releases land on `@next`, hotfixes on legacy majors land on `@v<major>`, and stable releases land on `@latest`. Three-layer rule: explicit `package.json#publishConfig.tag` (highest priority — set by `/solo-npm:hotfix` on legacy maintenance branches) → version-shape (`*-id.n` → `next`) → default `latest`.
 
-**Public template** (OIDC + provenance):
+**Public template (OIDC + provenance) — emit from npm-trust** (v0.17.0+):
+
+The canonical YAML lives in `npm-trust/src/templates/release-workflow.ts`
+(emitted by `npm-trust --emit-workflow`). solo-npm consumes it instead
+of duplicating the YAML. Single source of truth — when GHA action
+versions or the dist-tag rule change, npm-trust emits the new template
+and solo-npm picks it up automatically via the `^0.11` pin.
+
+```bash
+# Default (no prepare-dist): publishes from the repo root
+pnpm exec npm-trust --emit-workflow > .github/workflows/release.yml
+
+# Variant for projects that publish from dist/ (TypeScript libraries
+# with prepare-dist transforms — auto-detect via package.json#devDependencies):
+pnpm exec npm-trust --emit-workflow --with-prepare-dist > .github/workflows/release.yml
+```
+
+**Variant selection** — Phase 1c picks the variant by reading the
+capabilities probes built in Phase 0 (below). If `prepare-dist` is in
+the project's devDependencies OR `pnpm exec prepare-dist --capabilities --json`
+exits 0, use `--with-prepare-dist`. Otherwise use the default.
+
+For reference, the public template emitted is:
 
 ```yaml
 name: Release
@@ -437,17 +489,18 @@ If existing, **merge keys** — add `extraKnownMarketplaces.gllamas-skills`
 and `enabledPlugins["solo-npm@gllamas-skills"]: true` if not already
 present. Preserve any other keys in the file.
 
-#### `.solo-npm/state.json` — trust + audit state cache
+#### `.solo-npm/state.json` — trust + audit state cache (schema v2 in v0.17.0+)
 
 If missing, create with an empty cache:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "trust": {
     "configured": [],
     "lastFullCheck": null,
-    "ttlDays": 7
+    "ttlDays": 7,
+    "workflowFileHash": null
   },
   "audit": {
     "tier1Count": 0,
@@ -459,11 +512,17 @@ If missing, create with an empty cache:
 ```
 
 This file is the per-repo state cache used by:
-- `/solo-npm:release` Phase A.3 — skips per-package trust re-checks via the `trust` section.
+- `/solo-npm:release` Phase A.3 — skips per-package trust re-checks via the `trust` section. Uses `trust.workflowFileHash` (sha256 of `release.yml`, captured from `npm-trust --doctor --json`'s `workflowSnapshot.fileHash`) for **content-aware invalidation** — workflow edits force a re-verify even within the time-TTL.
 - `/solo-npm:release` Phase A.5 — skips known-good audit re-runs via the `audit` section; STOPs the release if cached `tier1Count > 0`.
 - `/solo-npm:status` — renders the Trust column from cache without live npm calls.
 
-The first `/release` and `/audit` after init populate their respective sections via cold-path scans. Subsequent invocations (within each section's `ttlDays`) take the hot path — zero npm calls.
+**Migration from v1 → v2.** If `.solo-npm/state.json` exists with
+`version: 1` (i.e., from a pre-v0.17.0 solo-npm), auto-upgrade on
+first read by adding `trust.workflowFileHash: null`. The first
+`/release` after migration takes the cold path (filling the hash); no
+user action required.
+
+The first `/release` and `/audit` after init populate their respective sections via cold-path scans. Subsequent invocations (within each section's `ttlDays`, with unchanged `workflowFileHash`) take the hot path — zero per-package npm calls (uses `--validate-only --json` instead of `--doctor`).
 
 **Cache TTLs**: trust = 7 days (trust state changes infrequently). Audit = 1 day (CVE landscape changes faster).
 
@@ -471,7 +530,8 @@ The file is **committed** (not gitignored) — package names are public
 on npm anyway, and committing gives cross-machine cache sharing for
 solo-dev.
 
-If `.solo-npm/state.json` already exists, leave it alone.
+If `.solo-npm/state.json` already exists at `version: 2`, leave it
+alone. If at `version: 1`, apply the v1 → v2 migration above.
 
 #### `CONTRIBUTING.md` (optional)
 

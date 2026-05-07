@@ -153,13 +153,15 @@ verification commands (detected from `package.json#scripts.lint`,
 
 If verification fails, **STOP** and surface the error.
 
-### A.3 Trust + environment check (cache-aware)
+### A.3 Trust + environment check (cache-aware, content-aware as of v0.17.0)
 
 For monorepos with many packages, running the full `--doctor` on every
 release iterates ~3 npm calls per package — slow and mostly redundant
 once trust is established. Phase A.3 uses a local cache at
 `.solo-npm/state.json` to skip per-package work when nothing has
-changed.
+changed. As of v0.17.0 the cache is also **content-aware**: a change to
+`.github/workflows/<RELEASE_WORKFLOW>` invalidates the cache even
+within the time-TTL.
 
 #### Step 1 — Read cache
 
@@ -175,14 +177,22 @@ Read `.solo-npm/state.json` if it exists. Compute:
 
 | Branch | Condition | Action |
 |---|---|---|
-| **Cold path** (full check) | `cacheStale` is true | Run `pnpm exec npm-trust --doctor --json --workflow <RELEASE_WORKFLOW>`. Apply the issue-code branching in Step 3 below. After success, **rewrite** `cache.trust.configured` with the current full list of `packages[]` where `trustConfigured == true OR provenancePresent == true`; refresh `lastFullCheck` to now. Save. |
-| **Targeted path** (delta only) | Cache fresh, `newPackages` non-empty | Run `pnpm exec npm-trust --packages <newPackages...> --list --json`. If any returned packages need config, auto-invoke `/solo-npm:trust --packages <newPackages...>`. After trust returns success, **append** `newPackages` to `cache.trust.configured`. Save. (Don't refresh `lastFullCheck` — the rest of the package set was not re-verified.) |
-| **Hot path** (zero npm calls) | Cache fresh, `newPackages` empty | Skip the trust check. Run inline env checks instead: `node -v` returns ≥24, `npm -v` returns ≥11.5.1, `git remote get-url origin` succeeds, `.github/workflows/<RELEASE_WORKFLOW>` exists. Proceed to Phase B. |
+| **Cold path** (full check) | `cacheStale` is true OR `cache.trust.workflowFileHash` is missing OR doesn't match the live workflow file's sha256 | Run `pnpm exec npm-trust --doctor --json --workflow <RELEASE_WORKFLOW>`. Apply the issue-code branching in Step 3 below. After success, **rewrite** `cache.trust.configured` with the current full list of `packages[]` where `trustConfigured == true OR provenancePresent == true`; refresh `lastFullCheck` to now; **store `workflowSnapshot.fileHash` to `cache.trust.workflowFileHash`** for content-aware invalidation. Save (H7 atomic). |
+| **Targeted path** (delta only) | Cache fresh, hash matches, `newPackages` non-empty | Run `pnpm exec npm-trust --packages <newPackages...> --list --json`. Parse `ListReport.packages[]`; if any have `trustConfigured == false`, auto-invoke `/solo-npm:trust --packages <newPackages...>`. After trust returns success (exit 0 or 60-PARTIAL with handled failures), **append** `newPackages` to `cache.trust.configured`. Save. (Don't refresh `lastFullCheck` — the rest of the package set was not re-verified.) |
+| **Hot path** (zero npm calls) | Cache fresh, hash matches, `newPackages` empty | Run a fast pre-flight that doesn't issue per-package npm calls: `pnpm exec npm-trust --validate-only --json --workflow <RELEASE_WORKFLOW>`. Returns a `ValidateReport`; if `ready === true` the env is good and we proceed to Phase B. If `ready === false`, surface `failures[]` and STOP per H6. |
 
 **Forcing a full re-verify.** Delete `.solo-npm/state.json` (or set
-`lastFullCheck` to null) to force the cold path on the next release —
-the explicit escape hatch for "I just changed something on the npm
-registry side; re-verify everything."
+`lastFullCheck` to null OR clear `workflowFileHash`) to force the cold
+path on the next release — the explicit escape hatch for "I just
+changed something on the npm registry side; re-verify everything."
+
+**Content-aware invalidation rationale.** Time-TTL alone misses the case
+where a maintainer edits `release.yml` (e.g., switches `release.yml` →
+`release-monorepo.yml`, or changes `id-token: write` → token-auth).
+The new workflow filename / permissions invalidate the trust binding
+immediately on the npm registry side. Comparing the live file's sha256
+against the cached hash catches that drift before the publish attempt
+fails with a confusing 403.
 
 #### Step 3 — Issue-code branching (cold path only)
 
@@ -745,9 +755,22 @@ After the publish succeeds, write the just-shipped version's `unpackedSize` to `
 
 **Retention policy**: keep at most the **last 3 versions per package** (sorted by semver descending). Older entries are pruned as new ones land — the cache stays bounded over years of releases. Tier 4 only needs the most-recent prior version for delta computation, so 3 is sufficient depth.
 
+**As of v0.17.0**, the size is read from a single bulk
+`--verify-provenance --json` call (which already runs in Phase C.7 to
+verify the SLSA attestation). For a monorepo, this is N-1 fewer npm
+calls than the previous per-package `npm view dist.unpackedSize`
+loop:
+
 ```bash
-# Read the unpackedSize from the most recent local pack-audit (cached in state.json) or from npm view:
-SIZE=$(npm view "${PACKAGE_NAME}@${NEXT_VERSION}" dist.unpackedSize)
+# unpackedSize comes from VerifyProvenanceReport.packages[].unpackedSize
+# (added in npm-trust 0.11.0 / VerifyProvenanceReport schemaVersion 2).
+# The verify report was already fetched in C.7 — reuse the parsed JSON
+# instead of issuing a fresh npm view call.
+SIZE=$(echo "$VERIFY_REPORT_JSON" | jq -r ".packages[] | select(.pkg == \"${PACKAGE_NAME}\") | .unpackedSize")
+# Fallback for older CLIs that don't expose unpackedSize:
+if [ -z "$SIZE" ] || [ "$SIZE" = "null" ]; then
+  SIZE=$(npm view "${PACKAGE_NAME}@${NEXT_VERSION}" dist.unpackedSize)
+fi
 
 # Write to .solo-npm/state.json#pkgCheck.lastSize, then trim to last 3 versions per package:
 node -e "

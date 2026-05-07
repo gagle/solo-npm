@@ -13,7 +13,7 @@ gather inputs → confirm → handle manual steps → execute → verify.
 
 If the user's prompt contains `--help` / `-h` / `"how does /solo-npm:trust work"` / similar, surface a help summary **INSTEAD** of running the skill.
 
-Synthesize from the **Phases** (Pre-flight CLI resolution / Phase 1 discover / Phase 2 execute → auth gate → dry-run → configure → verify), and 2–3 trigger phrases (e.g., *"configure trust for my packages"*, *"setup OIDC"*). Note `/trust` orchestrates the `npm-trust` CLI (pinned to `^0.9` as of v0.16.0) — the CLI is the canonical implementation; this skill is the AI wizard wrapper. See `/unpublish` Phase −0 for canonical format.
+Synthesize from the **Phases** (Pre-flight CLI resolution / Phase 1 discover / Phase 2 execute → auth gate → dry-run → configure → verify), and 2–3 trigger phrases (e.g., *"configure trust for my packages"*, *"setup OIDC"*). Note `/trust` orchestrates the `npm-trust` CLI (pinned to `^0.11` as of v0.17.0) — the CLI is the canonical implementation; this skill is the AI wizard wrapper. See `/unpublish` Phase −0 for canonical format.
 
 After surfacing, **STOP**. Re-invocation without help triggers runs normally.
 
@@ -45,12 +45,23 @@ invocation in every step below. Try in this order and stop at the first match:
    ```
 4. **Registry fetch (last resort).** Otherwise fall back to:
    ```
-   <CLI> = npx -y npm-trust@^0.9
+   <CLI> = npx -y npm-trust@^0.11
    ```
-   **Pinned to major 0.9** (D3 from v0.11.0 strict-safety pass; bumped from `^0.4` in v0.16.0 after explicit verification against npm-trust 0.9.1). The skill body uses `--auto`, `--doctor`, `--json`, `--list`, `--only-new`, `--dry-run`, `--repo`, `--workflow`, `--scope`, `--packages` — all present and shape-stable in 0.9.x per the maintainer-verified compatibility check that shipped with npm-trust 0.9.1's CHANGELOG. Using `@latest` would fetch whatever is current on npm and could silently regress flag availability. Bump this pin explicitly when solo-npm is tested against a newer npm-trust major.
+   **Pinned to major 0.11** (bumped from `^0.9` in v0.17.0 after the
+   v0.10/v0.11 cliff fix landed). v0.10.0 added structured exit codes
+   (`EXIT.*`), `--validate-only`, `--verify-provenance`,
+   `--emit-workflow`, `ListReport` and `ConfigureReport` JSON schemas.
+   v0.11.0 added `--with-prepare-dist`, `--capabilities`, and
+   `unpackedSize` in `VerifyProvenanceReport.packages[]`. This skill
+   uses all of those plus the legacy `--auto`, `--doctor`, `--json`,
+   `--list`, `--only-new`, `--dry-run`, `--repo`, `--workflow`,
+   `--scope`, `--packages` flags. Using `@latest` would fetch whatever
+   is current on npm and could silently regress flag availability;
+   bump this pin explicitly when solo-npm is tested against a newer
+   npm-trust major.
 
 If your shell's `npx` form rejects the package (some npm 11 setups require
-`npm exec --` instead), substitute `npm exec -- npm-trust@^0.9` for
+`npm exec --` instead), substitute `npm exec -- npm-trust@^0.11` for
 the npx fallback.
 
 Use the chosen invocation in **every** subsequent step. Below, `<CLI>` is the
@@ -58,15 +69,27 @@ placeholder — replace mentally.
 
 ### Verify the resolved version supports the flags this skill uses
 
+Probe for a v0.11+ specific flag (`--capabilities`, added in v0.11.0):
+
 ```bash
-<CLI> --help 2>/dev/null | grep -q -- "--auto" \
+<CLI> --help 2>/dev/null | grep -q -- "--capabilities" \
   && echo "ok" \
   || echo "TOO_OLD"
 ```
 
-If the result is `TOO_OLD`, the resolved binary predates `--auto` (added in
-v0.2.0). **Stop** and ask the user to upgrade with
-`npm i -g npm-trust@^0.9` (or remove the cached version that resolved).
+If the result is `TOO_OLD`, the resolved binary predates v0.11.0 and
+this skill cannot use the structured exit codes, JSON schemas, or
+capabilities-discovery primitives it relies on. **Stop** and ask the
+user to upgrade with `npm i -g npm-trust@^0.11` (or remove the cached
+version that resolved).
+
+The capabilities probe also exposes the rest of the toolchain. Reading
+the descriptor lets the skill confirm the runtime supports every flag
+it intends to call before executing any side effects:
+
+```bash
+<CLI> --capabilities --json | jq '.features, .version'
+```
 
 ## Phase 1 — Discover (one call when --doctor is supported)
 
@@ -166,34 +189,60 @@ ls .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null
    - options: one entry per candidate file (label is the basename).
      Cap at 4 options.
 
-### 4. Show current trust state
+### 4. Show current trust state (JSON, deterministic)
 
 ```bash
-<CLI> --auto --list
+<CLI> --auto --list --json
 ```
 
-Per-package output: each line shows the package name and either its existing
-trust configuration or `(no trust configured)`.
+Returns a `ListReport` (schemaVersion 1):
 
-> **Note on cross-checking.** `npm trust list` (which the CLI calls under the
-> hood) sometimes reports `(no trust configured)` even when OIDC publishing
-> demonstrably works — this happens when Trusted Publishing was set up via
-> npm's web UI rather than the CLI, or when the CLI's auth state is stale.
-> Recent versions of `npm-trust` cross-check via `npm view <pkg>
-> dist.attestations` to flag this; if you see a `(provenance present)` marker
-> in the output, treat the package as effectively configured even if the
-> trust line is empty.
+```ts
+{
+  schemaVersion: 1;
+  packages: Array<{
+    pkg: string;
+    trustConfigured: boolean;
+    raw: string;          // raw `npm trust list` stdout for forensics
+  }>;
+}
+```
 
-### 5. Identify what still needs work
+Branch on `packages[].trustConfigured` (boolean) — not on substring
+matches against the `raw` field. The `raw` is included only for
+diagnostic surfacing when the boolean answer is suspicious.
+
+> **Note on cross-checking.** `npm trust list` (which the CLI calls
+> under the hood) sometimes reports an empty record even when OIDC
+> publishing demonstrably works — this happens when Trusted Publishing
+> was set up via npm's web UI rather than the CLI, or when the CLI's
+> auth state is stale. The cross-check via `npm view <pkg>
+> dist.attestations` is performed by `--verify-provenance --json`
+> (Step 5 below); always pair the `--list` boolean with the
+> verify-provenance result before declaring a package "needs work."
+
+### 5. Identify what still needs work (JSON, deterministic)
 
 ```bash
-<CLI> --auto --only-new --list
+<CLI> --auto --only-new --list --json
 ```
 
-The filter calls `npm trust list`, `npm view <pkg>`, and (in v0.3.0+)
-`npm view <pkg> dist.attestations` per package. It keeps packages that lack
-trust **and** lack provenance, or aren't yet published. The result is the
-precise working set for this run.
+Same `ListReport` shape as Step 4, but pre-filtered to packages that
+lack trust **and** lack provenance, or aren't yet published. The
+returned `packages[]` is the precise working set for this run.
+
+For a richer view (with `attestationCount`, `lastAttestationAt`, and
+`unpackedSize` per package), pair it with:
+
+```bash
+<CLI> --auto --verify-provenance --json
+```
+
+Returns a `VerifyProvenanceReport` (schemaVersion 2). Use the
+`provenancePresent` field to confirm the trust state shown in
+`ListReport.packages[].trustConfigured` — if a package has provenance
+but no trust record, it was set up via the npm web UI and should be
+treated as configured.
 
 ### 6. Confirm with user
 
@@ -220,7 +269,26 @@ Then call `AskUserQuestion` to gate Phase 2:
 
 ## Phase 2 — Execute
 
-### Error-handling patterns (H2, H6 from `/unpublish` reference)
+### Error-handling patterns (H1-H8 from `/unpublish` reference)
+
+Every npm-trust invocation in this skill returns one of the structured
+exit codes documented in `npm-trust/docs/cli-api.md`. Map non-zero
+codes deterministically — don't grep stderr:
+
+| Exit code | Constant                       | Solo-npm response |
+|-----------|--------------------------------|-------------------|
+| 0         | `SUCCESS`                      | continue |
+| 10        | `CONFIGURATION_ERROR`          | H6 — surface stderr, STOP (bad flags) |
+| 20        | `AUTH_FAILURE`                 | H3 — auth-window race; recheck `npm whoami` |
+| 21        | `OTP_REQUIRED`                 | H1 — direct user to web 2FA, retry once |
+| 30        | `WORKSPACE_DETECTION_FAILED`   | H6 — STOP with diagnostic |
+| 40        | `REGISTRY_UNREACHABLE`         | H8 — exponential backoff retry |
+| 50        | `WEB_2FA_TIMEOUT`              | H1 — re-issue auth challenge |
+| 60        | `PARTIAL_FAILURE`              | partial — continue with `failedPackages` quarantined |
+| 1         | `GENERIC_FAILURE`              | H6 — chain-failure recovery |
+
+For `PARTIAL_FAILURE` (60), parse `ConfigureReport.summary.failedPackages`
+to know which packages quarantine. Other packages may have succeeded.
 
 - **H2 — `.solo-npm/state.json` corruption guard**: Step 11 (state cache write) reads the existing file before writing the trust update. If parse fails, surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache."* and write a fresh structure. Don't lose the trust update on a stale cache.
 - **H6 — Chain-target failure recovery**: this skill is auto-chained from `/release` Phase A.3 (delta) and `/init` Phase 3. If trust setup STOPs internally (npm-trust CLI error, web 2FA timeout, etc.), surface the verbatim diagnostic in the parent skill's context. The parent's own H6 handler will offer retry/abort.
@@ -371,24 +439,34 @@ If the configure output (in the user's terminal) listed failed packages with the
 
 Do not retry automatically; publishing is a deliberate user action.
 
-### 11. Verify
+### 11. Verify (JSON, deterministic)
 
-This step is **safe to run in agent bash** — `--list` is read-only:
+This step is **safe to run in agent bash** — `--list --json` is read-only:
 
 ```bash
-<CLI> --auto --list
+<CLI> --auto --list --json
 ```
 
-All previously-untrusted-but-published packages should now show trust
-information (the workflow file path) instead of `(no trust configured)`.
+Returns a `ListReport` (schemaVersion 1). Branch on
+`packages[].trustConfigured`: every previously-untrusted-but-published
+package should now read `trustConfigured: true`.
 
-**Update the trust-state cache.** Read `.solo-npm/state.json` (create if missing using the v1 schema), then:
+**Update the trust-state cache.** Read `.solo-npm/state.json` (create
+if missing using the v2 schema documented in `/init`), then:
 
-- Append all packages that now show trust configured to `cache.trust.configured` (deduplicate).
+- Append every `pkg` with `trustConfigured: true` (dedup) to
+  `cache.trust.configured`.
 - Refresh `cache.trust.lastFullCheck` to `now`.
-- Save.
+- **Populate `cache.trust.workflowFileHash`** by reading
+  `<CLI> --doctor --json --workflow <file> | jq -r '.workflowSnapshot.fileHash'`.
+  This makes the cache content-aware — the next `/release` cold-path
+  branch invalidates if the workflow file changes, even if the
+  time-based TTL hasn't expired.
+- Save (atomic write per H7: write to `.tmp` then rename).
 
-The next `/release` (within `ttlDays`, with no new packages) takes the **hot path** — zero npm calls for the trust check.
+The next `/release` (within `ttlDays`, with no new packages, with
+unchanged `workflowFileHash`) takes the **hot path** — zero npm calls
+for the trust check (uses `--validate-only --json`, not `--doctor`).
 
 ### 12. Report
 
