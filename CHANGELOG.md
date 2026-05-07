@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.10.1 — strict-safety hardening pass (H7 + tag/push categorization + curl timeouts)
+
+Patch release that closes the 9 Tier-1 strict-safety gaps surfaced by a follow-up cross-skill audit on every external-tool invocation. No new features; no behavioral changes for the happy path; substantially better diagnostics + remediation when something goes wrong.
+
+### H7 — universal external-tool reliability pattern (NEW)
+
+New canonical pattern in `/solo-npm:unpublish` Phase −1 (referenced from sibling skills). Every external tool the skill invokes is verified upfront with three checks: **presence**, **version detection** (best-effort), and **timeout-wrappable invocation**. Plus two extensions:
+
+- **`.gitconfig` user identity check** — surfaces missing `user.name` / `user.email` upfront with a concrete fix (`git config --global ...`) instead of letting the user hit a cryptic exit-128 from `git commit` mid-skill.
+- **Atomic `state.json` writes** — write to `.solo-npm/state.json.tmp`, then `fs.renameSync()`. Single atomic inode swap on POSIX. A killed-mid-write process leaves the original cache intact (the leftover `.tmp` is harmless because the H2 corruption guard already wraps reads in try/catch).
+- **Stale-lock auto-cleanup** — the H5 lock check now distinguishes "live PID holding the lock" (STOP — wait or kill) from "dead PID holding a stale lock" (WARN + clean + proceed). Fixes the case where a SIGKILL-ed prior run left the lockfile stuck and blocking forever.
+
+### Per-skill strict-safety fixes
+
+- **`git tag` collision pre-flight** in `/release` C.5, `/prerelease` C.5, `/hotfix` E.4 — `git ls-remote --tags` BEFORE local tag creation. The wrong-name re-release case (`/unpublish` then `/release` v1.0.0 again) was the load-bearing failure mode this fixes; previously the local tag would create successfully but `git push --tags` would fail mid-flow with the local tag dangling.
+- **`git push` rejection categorization** in same three skills — non-fast-forward / pre-receive hook / branch protection / auth failure all collapsed into one verbatim stderr dump previously. Now each is detected and surfaces a specific remediation block.
+- **`--max-time 10 --connect-timeout 5` on every `curl` call** to deps.dev and the npmjs downloads API — `/unpublish` A.3, `/status` Phase 2. Previously a hung network connection would block the skill indefinitely.
+- **`timeout 30 npm view ... --json 2>/dev/null`** on every JSON-parsing npm call — `/dist-tag` A.3, `/status` Phase 2, `/deprecate` A.3. The `2>/dev/null` redirect prevents npm warnings (deprecation notices, registry hints) from corrupting the JSON parse downstream; the `timeout` bounds the call against a slow/stuck registry.
+- **Tag push failure rolls back the local tag** in `/release` C.5, `/hotfix` E.4 — if `git push --tags` fails for any reason after the local tag was created, the local tag is now `git tag -d`'d so the next `/release` attempt can re-tag without conflicting.
+
+### Why patch (not minor)
+
+These are pure-additive safety hardenings, no behavioral changes for the happy path. Fix-mode commits per conventional-commits convention → patch bump.
+
+### Upgrading
+
+`/reload-plugins` after marketplace update. No state.json migration needed; the H7 atomic-write pattern is forward-compatible (existing caches read normally; future writes are atomic).
+
 ## v0.10.0 — `/solo-npm:unpublish` + cross-skill systemic hardening + auto-cleanup
 
 Big stability-grade release. Adds skill #13 (`/solo-npm:unpublish`) for the rare-but-real wrong-name and rename-after-publish cases, with strict safety gates. Also lands a cross-skill systemic hardening pass (38 patches across 11 sibling skills) for six error-handling patterns surfaced by a comprehensive ~257-error-path audit, plus an auto-cleanup gate for git tags + GitHub Releases after unpublish.

@@ -35,6 +35,118 @@ This skill **defaults to recommending deprecate** in every gate. Unpublish is op
 | `unpublish-all` | Remove the entire package across all versions (`--force`); subject to eligibility |
 | `rename-redirect` | Multi-step: deprecate old name with a redirect message + (optional) unpublish old eligible versions. The new package gets published separately via `/init` or `/release` |
 
+## Phase −1 — External-tool reliability (H7 canonical pattern)
+
+Strict-safety baseline applied **before** any other phase. This is the canonical reference for the H7 pattern; sibling skills reference this block. Every external tool the skill will invoke must be verified upfront with three checks: **presence**, **version**, and **timeout-wrappable invocation**. The user gets a clear remediation path if anything fails — no silent hangs, no cryptic later-phase errors.
+
+### −1.1 Tool presence + version detection
+
+```bash
+# Required tools for /unpublish:
+#   npm   — registry mutations + auth
+#   git   — local tag cleanup (Phase D.3 if user opts in)
+#   gh    — GitHub Release cleanup (Phase D.3 if user opts in)
+#   curl  — deps.dev eligibility check (Phase A.3)
+#   jq    — JSON parsing
+#   node  — state.json cache cleanup script
+
+require_tool() {  # args: $1 = tool name, $2 = optional minimum-version semver, $3 = canonical install URL
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "ERROR: required tool '$1' is not installed."
+    echo "       Install from: $3"
+    exit 1
+  fi
+  # Optional version pin (best-effort — version output formats differ per tool)
+  if [ -n "$2" ]; then
+    VERSION_OUT=$("$1" --version 2>&1 | head -1)
+    echo "  ✓ $1 detected: $VERSION_OUT"
+  fi
+}
+
+require_tool npm  ""  "https://nodejs.org"
+require_tool git  ""  "https://git-scm.com"
+require_tool curl ""  "https://curl.se"
+require_tool jq   ""  "https://jqlang.github.io/jq/"
+require_tool node ""  "https://nodejs.org"
+
+# gh is optional (only used in Phase D.3 if user picks auto-cleanup)
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  GH_AVAILABLE=1
+else
+  GH_AVAILABLE=0  # Phase D.3 will skip GitHub Release cleanup with a warning
+fi
+```
+
+### −1.2 Universal timeout wrapper
+
+Every external network call in this skill **must** be wrappable to bound execution time. Hangs (stale tokens, slow registries, ISP DNS issues) are a strict-safety failure: the user gets no signal that anything is wrong. Convention:
+
+| Call type | Timeout | Why |
+|---|---|---|
+| `npm whoami` | 30s | Auth check; long enough for slow networks, short enough to surface hung tokens |
+| `npm view ...` | 30s | Read-only registry lookups |
+| `npm unpublish/deprecate/...` | 60s | Mutations may take longer especially with 2FA flows |
+| `curl <api>` | `--max-time 10 --connect-timeout 5` | External APIs: deps.dev, downloads-counter |
+| `gh <subcommand>` | 30s | GitHub API |
+| `git ls-remote/fetch/push` | 60s | Network git operations |
+
+Implementation: wrap with `timeout(1)` if available (Linux + macOS via `coreutils`), or use the tool's native timeout flag where one exists. Fail-mode: timeout → surface *"<tool> timed out after Ns — network unreachable, token stale, or service slow. Retry, or check manually."*
+
+### −1.3 `.gitconfig` user identity check
+
+```bash
+GIT_USER_NAME=$(git config user.name 2>/dev/null)
+GIT_USER_EMAIL=$(git config user.email 2>/dev/null)
+if [ -z "$GIT_USER_NAME" ] || [ -z "$GIT_USER_EMAIL" ]; then
+  echo "ERROR: git config user.name and user.email must be set before running /solo-npm:unpublish."
+  echo "       Without them, `git tag -d` operations in Phase D.3 work, but any future commit"
+  echo "       (e.g., re-publishing under correct name) will fail with cryptic exit-128 errors."
+  echo
+  echo "Fix:   git config --global user.name 'Your Name'"
+  echo "       git config --global user.email 'you@example.com'"
+  exit 1
+fi
+```
+
+This is checked even though `/unpublish` itself doesn't make commits — it's the entry point check for the H7 pattern, applied universally so the user fixes config issues once. Skills that DO commit (release, prerelease, hotfix, deps, init) absolutely depend on this.
+
+### −1.4 Atomic state.json write helper (used in Phase D.2)
+
+Every state.json write in this skill (and the H7 reference for sibling skills) uses an atomic write pattern: write to a temp file, then rename. Non-atomic `writeFileSync` truncates the file before writing, so a process killed mid-write leaves a zero-byte (or partially-written) cache.
+
+```javascript
+// Used wherever the skill writes .solo-npm/state.json:
+const tmp = '.solo-npm/state.json.tmp';
+fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+fs.renameSync(tmp, '.solo-npm/state.json');
+// rename() is atomic on POSIX; on the same filesystem, it's a single inode swap.
+```
+
+If the process is killed between writeFile and rename, the leftover `.tmp` file is detected on next read (H2 corruption guard already wraps `JSON.parse` in try/catch — the `.tmp` file is harmless because it's not the real state file).
+
+### −1.5 Stale-lock auto-cleanup (extends H5)
+
+The lock file at `.solo-npm/locks/<sanitized>.lock` holds a PID. If the lock-holding process was killed (SIGKILL, OOM, machine crash), the lock persists. Phase C.0's H5 check is upgraded to **auto-clean stale locks** rather than refusing forever:
+
+```bash
+LOCK_FILE=".solo-npm/locks/$(echo "<NAME>" | sed 's|/|_|g').lock"
+if [ -f "$LOCK_FILE" ]; then
+  STALE_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+  if [ -n "$STALE_PID" ] && kill -0 "$STALE_PID" 2>/dev/null; then
+    echo "ERROR: another /unpublish run holds $LOCK_FILE (PID $STALE_PID is alive)."
+    echo "       Wait for it to finish, or kill PID $STALE_PID manually if it's hung."
+    exit 1
+  fi
+  # PID dead or lockfile content unparseable → stale lock; clean it
+  echo "WARN: removing stale lockfile $LOCK_FILE (prior holder PID $STALE_PID is no longer alive)"
+  rm -f "$LOCK_FILE"
+fi
+mkdir -p .solo-npm/locks
+echo $$ > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+# NOTE: trap doesn't fire on SIGKILL — that's why the stale-cleanup above exists.
+```
+
 ## Phase 0 — Read prompt context
 
 Scan the user's prompt for hints; pre-fill what's clear.
@@ -87,8 +199,13 @@ HOURS_SINCE_PUBLISH=$(( (now - publishedAt) / 3600 ))
 # 2. Dependents (via deps.dev — free, no auth, integrated in v0.9.0)
 #    Capture HTTP status separately to differentiate "not indexed yet" (404)
 #    from "API down" (5xx/timeout) — see §A.3 below.
-HTTP_STATUS=$(curl -s -o /tmp/depsdev.json -w "%{http_code}" \
+HTTP_STATUS=$(curl -s --max-time 10 --connect-timeout 5 \
+  -o /tmp/depsdev.json -w "%{http_code}" \
   "https://api.deps.dev/v3/systems/npm/packages/<NAME>/versions/<VERSION>:dependents")
+# --max-time 10: total timeout incl. connect + transfer
+# --connect-timeout 5: stop waiting for TCP handshake after 5s
+# On timeout, curl exits with code 28 → HTTP_STATUS will be empty → routes into the
+# 5xx/timeout STOP branch in the table below (correct strict-safety behavior).
 case "$HTTP_STATUS" in
   200) DEPENDENTS=$(jq '.dependentCount // 0' /tmp/depsdev.json) ;;
   404) DEPENDENTS=0; DEPSDEV_NOTE="not-indexed" ;;
@@ -96,7 +213,11 @@ case "$HTTP_STATUS" in
 esac
 
 # 3. Weekly downloads
-DOWNLOADS=$(curl -s "https://api.npmjs.org/downloads/point/last-week/<NAME>" | jq '.downloads // 0')
+DOWNLOADS=$(curl -s --max-time 10 --connect-timeout 5 "https://api.npmjs.org/downloads/point/last-week/<NAME>" | jq '.downloads // 0')
+# On timeout/failure: curl exits non-zero, jq receives empty input, returns 0.
+# Treating as 0 dl/wk on transient failure is conservative-safe — it makes the version
+# MORE eligible for unpublish, not less. The user can manually verify via the npmjs.com
+# download stats if the eligibility analysis surprises them.
 
 # 4. Ownership (use --json to avoid header-line off-by-one of `wc -l`)
 OWNER_COUNT=$(npm owner ls --json "<NAME>" | jq 'length')
@@ -269,15 +390,20 @@ if [ $? -ne 0 ] || [ "$WHOAMI_NOW" != "$WHOAMI_AT_PHASE_A" ]; then
   exit  # Don't proceed to destructive op with stale auth
 fi
 
-# 2. Acquire file lock (refuse if another /unpublish is running on this package)
-mkdir -p .solo-npm/locks
+# 2. Acquire file lock with stale-PID auto-cleanup (per Phase −1.5)
+#    Live lock holder → STOP. Dead lock holder → WARN + clean + proceed.
 LOCK_FILE=".solo-npm/locks/$(echo "<NAME>" | sed 's|/|_|g').lock"
-if [ -f "$LOCK_FILE" ] && kill -0 "$(cat "$LOCK_FILE")" 2>/dev/null; then
-  # Another process holds the lock
-  echo "ERROR: another /unpublish run holds .solo-npm/locks/<sanitized>.lock (PID $(cat $LOCK_FILE))."
-  echo "Wait for it to finish, or remove the stale lockfile if the process is dead."
-  exit 1
+if [ -f "$LOCK_FILE" ]; then
+  STALE_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+  if [ -n "$STALE_PID" ] && kill -0 "$STALE_PID" 2>/dev/null; then
+    echo "ERROR: another /unpublish run holds $LOCK_FILE (PID $STALE_PID is alive)."
+    echo "       Wait for it to finish, or kill PID $STALE_PID manually if it's hung."
+    exit 1
+  fi
+  echo "WARN: removing stale lockfile $LOCK_FILE (prior holder PID $STALE_PID is no longer alive)"
+  rm -f "$LOCK_FILE"
 fi
+mkdir -p .solo-npm/locks
 echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT
 ```
@@ -389,7 +515,12 @@ node -e "
     }
   }
 
-  fs.writeFileSync(path, JSON.stringify(state, null, 2) + '\n');
+  // Atomic write per Phase −1.4: write to .tmp then rename().
+  // Non-atomic writeFileSync truncates first, so a process killed mid-write
+  // would corrupt the cache. rename() is a single atomic inode swap on POSIX.
+  const tmp = path + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+  fs.renameSync(tmp, path);
 "
 ```
 

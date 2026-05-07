@@ -170,7 +170,9 @@ If target dist-tag is `v<TARGET_MAJOR>`: set `publishConfig.tag = "v<TARGET_MAJO
 
 ```bash
 # For legacy line (only):
-node -e "const p=require('./package.json'); p.publishConfig=p.publishConfig||{}; p.publishConfig.tag='v${TARGET_MAJOR}'; require('fs').writeFileSync('./package.json', JSON.stringify(p,null,2)+'\n');"
+node -e "const fs=require('fs'); const p=require('./package.json'); p.publishConfig=p.publishConfig||{}; p.publishConfig.tag='v${TARGET_MAJOR}'; fs.writeFileSync('./package.json.tmp', JSON.stringify(p,null,2)+'\n'); fs.renameSync('./package.json.tmp', './package.json');"
+# Atomic write (H7 pattern): write to .tmp + rename. A killed process never leaves
+# a corrupted package.json — the rename is a single atomic inode swap on POSIX.
 ```
 
 ### E.2 Compute next version
@@ -193,18 +195,43 @@ Options:  Proceed with v<NEXT_VERSION> (publishes to @<target-tag>) / Abort
 
 ### E.4 Commit, tag, publish
 
-After approval:
+After approval, apply the canonical git push rejection categorization from `/solo-npm:release` C.3 and the tag-collision pre-flight from `/solo-npm:release` C.5:
 
 ```bash
 git add CHANGELOG.md package.json
 git commit -m "chore: release v${NEXT_VERSION}"
 HOTFIX_SHA=$(git rev-parse HEAD)   # captured for Phase F.5 forward-port
-git push origin "${TARGET_MAJOR}.x"
+
+# Push the maintenance-branch commit with rejection categorization (non-FF / hook / branch-protection / auth)
+PUSH_OUT=$(timeout 60 git push origin "${TARGET_MAJOR}.x" 2>&1)
+PUSH_RC=$?
+if [ $PUSH_RC -ne 0 ]; then
+  # Same case-by-case categorization as /release C.3 — see canonical wording there
+  echo "ERROR: git push origin ${TARGET_MAJOR}.x failed (exit $PUSH_RC):"
+  echo "$PUSH_OUT" | sed 's/^/  /'
+  exit 1
+fi
+
+# Tag-collision pre-flight (per /release C.5 canonical pattern)
+if timeout 30 git ls-remote --tags origin "refs/tags/v${NEXT_VERSION}" 2>/dev/null | grep -q .; then
+  echo "ERROR: tag v${NEXT_VERSION} already exists on origin."
+  echo "       Investigate: git fetch --tags && git show v${NEXT_VERSION}"
+  echo "       If safe to overwrite: git push origin :refs/tags/v${NEXT_VERSION}, then re-run /solo-npm:hotfix."
+  exit 1
+fi
 
 git tag "v${NEXT_VERSION}"
-git push --tags
 
-gh run watch --exit-status
+# Push tag with rejection categorization; clean up local tag on failure
+TAG_PUSH_OUT=$(timeout 60 git push --tags 2>&1)
+if [ $? -ne 0 ]; then
+  git tag -d "v${NEXT_VERSION}" 2>/dev/null   # don't leave a local-only tag dangling
+  echo "ERROR: git push --tags failed:"
+  echo "$TAG_PUSH_OUT" | sed 's/^/  /'
+  exit 1
+fi
+
+timeout 1800 gh run watch --exit-status   # 30min cap; fail-fast on long CI
 ```
 
 `HOTFIX_SHA` holds the release commit on `<TARGET_MAJOR>.x` — used by Phase F.5 if the user opts to forward-port to main.

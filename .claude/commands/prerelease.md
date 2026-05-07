@@ -170,22 +170,21 @@ git add CHANGELOG.md package.json
 git commit -m "chore: release v${NEXT_VERSION}"
 ```
 
-### C.3 Push
+### C.3 Push (commit only) — with rejection categorization
 
-```bash
-git push
-```
+Apply the same git-push-rejection categorization as `/solo-npm:release` C.3 (canonical reference). Capture stderr, switch on common rejection patterns (non-fast-forward, server-side hook, branch protection, auth fail), and surface the matching remediation. Wrap with `timeout 60` to avoid indefinite hangs on stalled remotes. On any failure, halt before tagging.
 
 ### C.4 Final pre-tag verification
 
 Re-invoke `/solo-npm:verify` (or `/verify` wrapper). Halt on failure.
 
-### C.5 Tag and push
+### C.5 Tag and push — with collision pre-flight
 
-```bash
-git tag "v${NEXT_VERSION}"
-git push --tags
-```
+Apply the same tag-collision pre-flight as `/solo-npm:release` C.5 (canonical reference). Pre-flight steps:
+
+1. `timeout 30 git ls-remote --tags origin "refs/tags/v${NEXT_VERSION}"` — if the tag already exists on remote, **STOP** with a remediation block (typically the user should `git push origin :refs/tags/v${NEXT_VERSION}` first, or a prior /prerelease run failed mid-flow and left the tag).
+2. Only then `git tag "v${NEXT_VERSION}"` locally.
+3. `timeout 60 git push --tags` with the same rejection categorization as C.3. On failure: clean up the local tag (`git tag -d`) so the next attempt can re-tag.
 
 ### C.6 Watch CI
 

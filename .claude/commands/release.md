@@ -331,7 +331,7 @@ Only include sections with entries.
 
 Before kicking off the execute steps, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2; concrete adaptation per pattern:
 
-- **H2 — `.solo-npm/state.json` corruption guard**: every `JSON.parse(state.json)` read in Phase A.3 (trust cache), A.5 (audit cache), and the post-publish writes in C.7.6 (bundle-size cache) must wrap in try/catch. On parse fail surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache. Remove the file and re-run any solo-npm skill to regenerate."* Continue with empty defaults; do not block the release on a stale cache.
+- **H2 — `.solo-npm/state.json` corruption guard + atomic writes**: every `JSON.parse(state.json)` read in Phase A.3 (trust cache), A.5 (audit cache), and the post-publish reads in C.7.6 (bundle-size cache) must wrap in try/catch. On parse fail surface non-fatal warning *".solo-npm/state.json is malformed; treating as empty cache. Remove the file and re-run any solo-npm skill to regenerate."* Continue with empty defaults; do not block the release on a stale cache. **Writes must be atomic** per H7 / `/unpublish` Phase −1.4: write to `.solo-npm/state.json.tmp` then `fs.renameSync()`. Non-atomic `writeFileSync` truncates first, so a process killed mid-write leaves a corrupted cache. The C.7.6 cache update implements this directly.
 - **H3 — Auth-window race**: `npm publish` runs in CI via OIDC (no local auth window), so this is mostly a no-op for the publish step itself. However, Phase G's chain to `/solo-npm:deprecate` invokes local `npm deprecate`; that chain target inherits its own Phase C.0 H3 / H1 / H5 handlers (`npm whoami` re-check + lock acquisition + EOTP detection), so H3 is satisfied transitively. Don't duplicate the check here.
 - **H4 — Registry propagation lag retry**: Phase C.7 verify (`npm view <pkg>@<v>` post-publish, `npm view <pkg> dist-tags`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP the release on lag — surface non-fatal note: *"Registry not yet reflecting publish after 15s — npm CDN may take up to 5 minutes; tag is on origin and CI succeeded, so this is verification lag, not a publish failure."*
 - **H6 — Chain-target failure recovery**: chains into `/verify` (A.2, C.4), `/init` (A.3 WORKFLOWS_NONE auto-fix), `/trust` (A.3 delta), `/audit` (A.5 cached check), `/deprecate` (Phase G) — when any chain target STOPs, capture its verbatim diagnostic and surface in `/release` context with options: retry the chain / abort / skip-and-continue (where safe). Don't silently swallow.
@@ -356,10 +356,42 @@ git add CHANGELOG.md package.json
 git commit -m "chore: release v${NEXT_VERSION}"
 ```
 
-### C.3 Push (commit only, no tag yet)
+### C.3 Push (commit only, no tag yet) — with rejection categorization
 
 ```bash
-git push
+PUSH_OUT=$(timeout 60 git push 2>&1)
+PUSH_RC=$?
+if [ $PUSH_RC -ne 0 ]; then
+  case "$PUSH_OUT" in
+    *"non-fast-forward"*|*"Updates were rejected"*|*"fetch first"*)
+      echo "ERROR: git push rejected (non-fast-forward). Someone else pushed since you last fetched."
+      echo "Recovery: git fetch origin && git rebase origin/main"
+      echo "         then re-run /solo-npm:release."
+      ;;
+    *"pre-receive hook"*|*"pre-push hook"*|*"hook declined"*)
+      echo "ERROR: git push rejected by server-side hook."
+      echo "Hook output:"
+      echo "$PUSH_OUT" | sed 's/^/  /'
+      echo "Recovery: address the hook's complaint, amend the commit, then re-run /solo-npm:release."
+      ;;
+    *"protected branch"*|*"branch protection"*|*"required status check"*)
+      echo "ERROR: git push rejected by branch protection rules."
+      echo "Recovery: this branch may not allow direct pushes. Push to a feature branch + open a PR,"
+      echo "         or update the branch-protection rules if you have admin access."
+      ;;
+    *"Permission denied"*|*"Authorization failed"*|*"could not read Username"*|*"403"*)
+      echo "ERROR: git push auth failed."
+      echo "Recovery: check SSH key, credential helper, or token expiry."
+      echo "         For HTTPS: re-run 'git config credential.helper store' or refresh the token."
+      echo "         For SSH:   ssh-add -l   to verify your key is loaded."
+      ;;
+    *)
+      echo "ERROR: git push failed (exit $PUSH_RC):"
+      echo "$PUSH_OUT" | sed 's/^/  /'
+      ;;
+  esac
+  exit 1
+fi
 ```
 
 ### C.4 Final pre-tag verification
@@ -372,11 +404,57 @@ If anything fails, **STOP**. Recovery: fix the issue, restart from
 Phase A. The release commit is on origin but no tag has been pushed
 yet, so the workflow won't run.
 
-### C.5 Tag and push the tag
+### C.5 Tag and push the tag — with collision pre-flight
+
+**Pre-flight: tag collision check.** Before creating the tag locally, verify it doesn't already exist on the remote. The wrong-name re-release case (where the user just ran `/solo-npm:unpublish` and is republishing) and the manual-tag case both fire here.
 
 ```bash
+# Check remote for the tag BEFORE local tag creation
+if timeout 30 git ls-remote --tags origin "refs/tags/v${NEXT_VERSION}" 2>/dev/null | grep -q .; then
+  echo "ERROR: tag v${NEXT_VERSION} already exists on origin."
+  echo "       This usually means a prior /solo-npm:release got partway then failed,"
+  echo "       OR someone created the tag manually,"
+  echo "       OR /solo-npm:unpublish was run but the git tag wasn't cleaned up."
+  echo
+  echo "Investigate: git fetch --tags && git show v${NEXT_VERSION}"
+  echo
+  echo "If safe to overwrite (e.g., post-unpublish re-release):"
+  echo "  git tag -d v${NEXT_VERSION}                            # remove local tag if any"
+  echo "  git push origin :refs/tags/v${NEXT_VERSION}            # remove remote tag"
+  echo "  /solo-npm:release                                      # retry"
+  exit 1
+fi
+
+# Tag doesn't exist on remote — safe to create locally and push
 git tag "v${NEXT_VERSION}"
-git push --tags
+
+# Push tag with the same rejection categorization as C.3
+PUSH_OUT=$(timeout 60 git push --tags 2>&1)
+PUSH_RC=$?
+if [ $PUSH_RC -ne 0 ]; then
+  # If the tag push fails, also clean up the local tag — otherwise the user
+  # is left with a local-only tag that will conflict with the next /release attempt.
+  git tag -d "v${NEXT_VERSION}" 2>/dev/null
+  case "$PUSH_OUT" in
+    *"already exists"*)
+      echo "ERROR: race condition — tag v${NEXT_VERSION} appeared on origin between pre-flight and push."
+      echo "Recovery: investigate as above; another release may have raced this one."
+      ;;
+    *"Permission denied"*|*"Authorization failed"*|*"403"*)
+      echo "ERROR: git push --tags auth failed (commit pushed in C.3 but tag push rejected)."
+      echo "Recovery: re-authenticate, then 'git tag v${NEXT_VERSION} && git push --tags'."
+      ;;
+    *"hook"*)
+      echo "ERROR: tag push rejected by server-side hook:"
+      echo "$PUSH_OUT" | sed 's/^/  /'
+      ;;
+    *)
+      echo "ERROR: git push --tags failed (exit $PUSH_RC):"
+      echo "$PUSH_OUT" | sed 's/^/  /'
+      ;;
+  esac
+  exit 1
+fi
 ```
 
 This triggers the publish workflow on the new tag.
@@ -516,7 +594,11 @@ node -e "
     .filter(k => k.startsWith('${PACKAGE_NAME}@'))
     .sort((a, b) => semver(a.split('@').pop().split('-')[0], b.split('@').pop().split('-')[0]));
   for (const stale of sameNameKeys.slice(3)) delete state.pkgCheck.lastSize[stale];
-  fs.writeFileSync(path, JSON.stringify(state, null, 2) + '\n');
+  // Atomic write per H7 (Phase −1.4 of /unpublish) — write to .tmp then rename.
+  // Non-atomic writeFileSync truncates first; a process killed mid-write would corrupt the cache.
+  const tmp = path + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+  fs.renameSync(tmp, path);
 "
 ```
 

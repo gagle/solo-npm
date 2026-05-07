@@ -67,7 +67,9 @@ For each package, fetch in **parallel** (don't serialize):
 
 ```bash
 # Returns "version time.modified" — combined for one call:
-npm view <pkg> --json
+# 2>/dev/null prevents npm warnings from corrupting the JSON parse.
+# timeout 30 bounds against a hung/slow registry.
+timeout 30 npm view <pkg> --json 2>/dev/null
 ```
 
 Parse: `version`, `time.modified`, `dist.attestations` (if present →
@@ -81,11 +83,13 @@ The `dist-tags` map drives the dual-channel rendering in Phase 3:
 ### Per-package downloads (unauthenticated, lenient)
 
 ```bash
-curl -s "https://api.npmjs.org/downloads/point/last-week/<pkg>"
+curl -s --max-time 10 --connect-timeout 5 "https://api.npmjs.org/downloads/point/last-week/<pkg>"
 ```
 
 Returns `{ "downloads": <count>, "package": "<pkg>" }` or 404 (private
-packages return 404 — show "—").
+packages return 404 — show "—"). On timeout (curl exit 28), render `—` and continue;
+the dashboard is read-only and partial data is fine. Don't HARD STOP the whole `/status`
+on one slow API call.
 
 ### Per-repo GitHub fetches
 
@@ -182,8 +186,11 @@ For each package, fetch security + posture metadata from Google's [deps.dev API]
 
 ```bash
 # Per-package fetch — JSON over HTTP:
-curl -s "https://api.deps.dev/v3/systems/npm/packages/<pkg-name>"
+curl -s --max-time 10 --connect-timeout 5 "https://api.deps.dev/v3/systems/npm/packages/<pkg-name>"
 ```
+
+On timeout/network error: curl exits non-zero, jq receives empty input. Render the security-signals row as
+`(deps.dev unavailable)` and continue. As with downloads above, don't block the dashboard on a slow API.
 
 Parse:
 - `defaultVersion` → most recent published version

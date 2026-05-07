@@ -76,10 +76,10 @@ If extraction is ambiguous, pre-fill what's clear and AskUserQuestion for the re
 3. **Per-package state read**: for each target package, fetch dist-tags:
 
    ```bash
-   npm view <pkg> dist-tags --json
+   timeout 30 npm view <pkg> dist-tags --json 2>/dev/null
    ```
 
-   Returns `{ "latest": "...", "next": "...", ... }`.
+   Returns `{ "latest": "...", "next": "...", ... }`. The `2>/dev/null` redirect prevents npm warnings (deprecation notices, registry hints) from corrupting the JSON parse downstream — a real silent-failure mode if the user's npm config emits notices. The `timeout 30` bounds the call against a hung/slow registry.
 
 4. **Compute proposed mutation set** based on `OPERATION`:
 

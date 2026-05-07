@@ -52,10 +52,10 @@ If extraction is ambiguous, pre-fill what's clear and ask the rest.
 3. **Per-package version enumeration**: for each target package, list versions matching `RANGE`:
 
    ```bash
-   npm view <pkg> versions --json
+   timeout 30 npm view <pkg> versions --json 2>/dev/null
    ```
 
-   Filter via `semver.satisfies()` against `RANGE`.
+   Filter via `semver.satisfies()` against `RANGE`. The `2>/dev/null` redirect prevents npm warnings from corrupting the JSON parse; `timeout 30` bounds against a hung registry.
 
 4. **Per-version deprecation status read**: for each matching version:
 
