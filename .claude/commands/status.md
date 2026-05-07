@@ -53,7 +53,13 @@ npm access list packages @myorg --json
 
 (Useful for cross-cutting org-wide audits.)
 
-## Error-handling pattern (H2 from `/unpublish` reference)
+## Error-handling patterns (H2, H8 from `/unpublish` reference)
+
+**H8 rate-limit backoff (v0.12.0)**: `/status` Phase 2 fans out parallel `npm view` calls — one per package — and is the highest-impact application of H8. Every parallel `npm view` invocation must be wrapped via the `npm_with_h8_backoff` helper from `/unpublish` Phase −1.9. On 429 / "rate-limited" stderr, retry with exponential 1s/2s/4s/8s + ±20% jitter; max 4 attempts; surface "rate-limited; retry later" per-package if exhausted. The dashboard renders that package's row as `(rate-limited)` instead of `—` so the user knows it was throttled vs unavailable.
+
+**SSL/TLS error remediation (v0.12.0)**: every external HTTPS call (curl to deps.dev, npm view to registry, gh repo view) checks stderr against the SSL pattern set in `/unpublish` Phase −1.10. Non-fatal at the per-call level — that package's row falls back to `—` with a one-line "SSL error; see remediation hints below table" note that includes the corporate-proxy / transient / OS-CA-bundle / `--insecure` last-resort guidance once at the bottom of the dashboard.
+
+**H2 corruption guard** (carry-forward):
 
 `/status` reads `.solo-npm/state.json` for trust, audit, pkgCheck, and depsdev cache sections (Phase 2 below). Wrap every `JSON.parse(state.json)` read in try/catch — on parse fail, surface non-fatal warning *".solo-npm/state.json is malformed; rendering with empty cache (some columns may show `—` or `(no scan yet)`). Remove the file and re-run any solo-npm skill to regenerate."* and continue rendering with empty defaults per cache section. Don't crash the dashboard on a single malformed entry.
 
@@ -101,8 +107,61 @@ gh run list --repo <owner>/<repo> --workflow release.yml --limit 1 \
    --json conclusion,headSha,startedAt,url
 ```
 
-If the repo has > 30 published packages, batch with `gh api graphql`
-instead.
+### gh GraphQL fan-in for >20-package portfolios (Tier-3 I, v0.12.0)
+
+For portfolios with more than 20 unique repos, the per-repo fan-out above produces 2N gh API calls — slow + risks rate limits. Switch to a single `gh api graphql` call that fetches all repos in one round-trip:
+
+```bash
+# Threshold: > 20 unique repos triggers GraphQL fan-in.
+UNIQUE_REPOS=$(echo "$REPO_LIST" | sort -u | wc -l)
+if [ "$UNIQUE_REPOS" -gt 20 ]; then
+  # Build the GraphQL query with N repository(name:..., owner:...) sub-queries (aliased)
+  QUERY='query {'
+  i=0
+  for repo in $REPO_LIST_DEDUP; do
+    OWNER="${repo%/*}"
+    NAME="${repo#*/}"
+    QUERY+="
+      r${i}: repository(owner: \"${OWNER}\", name: \"${NAME}\") {
+        nameWithOwner
+        defaultBranchRef { name }
+        latestRelease { tagName publishedAt }
+        openIssues: issues(states: OPEN, first: 1) { totalCount }
+        openPRs: pullRequests(states: OPEN, first: 1) { totalCount }
+        url
+      }"
+    i=$((i + 1))
+  done
+  QUERY+='
+}'
+
+  # Single API call — captures all repo metadata in one round-trip
+  RESULT=$(timeout 30 gh api graphql -f query="$QUERY" 2>&1)
+  GRAPHQL_RC=$?
+
+  if [ $GRAPHQL_RC -ne 0 ]; then
+    # Common failures: insufficient token scope, rate-limited at the global level, malformed query
+    echo "WARN: gh api graphql fan-in failed: $RESULT"
+    echo "      Falling back to per-repo individual gh repo view + gh run list calls."
+    # The per-repo fallback below applies the H8 rate-limit backoff helper as well.
+    USE_GRAPHQL=0
+  else
+    # Parse RESULT.data.r0, .r1, ... and merge into the per-repo data structure used by Phase 3.
+    USE_GRAPHQL=1
+  fi
+fi
+
+if [ "${USE_GRAPHQL:-0}" -ne 1 ]; then
+  # Per-repo fallback (the original block above) — applied for ≤20 repos OR after graphql failure.
+  # Each call goes through the H8 rate-limit backoff helper from /unpublish Phase −1.9.
+  for repo in $REPO_LIST_DEDUP; do
+    npm_with_h8_backoff "gh repo view $repo --json defaultBranchRef,issues,stargazerCount,url"
+    npm_with_h8_backoff "gh run list --repo $repo --workflow release.yml --limit 1 --json conclusion,headSha,startedAt,url"
+  done
+fi
+```
+
+The 20-package threshold is a heuristic — below it, the latency savings of GraphQL don't outweigh the complexity (and rate-limit risk for unauthenticated `gh` is 60req/hr, easily blown by a 30-pkg portfolio). The user's typical portfolio is ≤10 repos so the fallback path is the common case.
 
 ### Per-repo local git
 

@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.12.0 — Tier-3 stability comprehensive pass (H8 rate-limit + SSL + SIGINT + npm BCL + workspace edges + gh GraphQL)
+
+Closes all 9 Tier-3 stability items previously deferred per `docs/stability.md`, plus 3 adjacent items (J/K/L) that fit the same category. With v0.12.0 shipped, **the code-level v1.0.0 entry criteria are complete**. What remains is external/temporal: demo repo, wider adoption signal, regression catch-once.
+
+### Tier-3 items shipped
+
+- **A — H8 rate-limit backoff helper (NEW)** in `/unpublish` Phase −1.9. Detects 429 / "rate-limited" stderr; exponential 1s/2s/4s/8s with ±20% jitter; max 4 attempts. Applied to portfolio-fan-out paths in `/status` Phase 2, `/deprecate` Phase A.3, `/dist-tag` Phase A.3, `/owner` Phase A.3. Surfaces "rate-limited" per-package on exhaustion rather than collapsing into ambiguous "—".
+- **B — SSL/TLS error remediation (NEW)** in `/unpublish` Phase −1.10. Pattern matching on `SSL_ERROR_*`/`cert*`/`unable to get local issuer`/`TLSV1_ALERT` in stderr from curl + git push + npm. Surfaces four-option remediation: transient retry / corporate-proxy CA bundle / OS CA bundle update / `--insecure` last resort. Applied at git push boundaries in `/release`/`/prerelease`/`/hotfix`, curl boundaries in `/status`/`/unpublish`. We hit this on the v0.10.1 push — real failure mode now has clear remediation.
+- **C — SIGINT signal handling (NEW)** in `/unpublish` Phase −1.11. State-aware cleanup on Ctrl+C: deletes local-only tag if `LOCAL_TAG_PENDING_PUSH` was set, drops stash if `STASH_PENDING`, reverts `publishConfig.tag` mutation if `PUBLISH_CONFIG_PENDING`. Sibling skills set their own state flags at corresponding mutation points. Scoped (high-value cleanups only), not a full state machine.
+- **D — Environment-variable validation** in `/unpublish` Phase −1.3b. `$HOME` writability check (npm requires it for `~/.npmrc` and `~/.npm/_cacache`); `$TMPDIR` fallback to `/tmp`. Surfaces in extreme CI environments where these are unset.
+- **E — `.npmrc` ad-hoc parsing → `npm config get` API** in `/init` Phase 1c. Replaces grep-based `.npmrc` reads with `npm config get registry` / `npm config get @<scope>:registry`. npm handles precedence (project < user < global) natively. The "undefined" literal vs empty string ambiguity is normalized via the BCL guard from Phase −1.4b.
+- **F — Conventional-commits strictness** in `/release` Phase B.3. Type whitelist (feat/fix/chore/docs/style/refactor/perf/test/build/ci/revert) with did-you-mean hint via Levenshtein-closest match. Special case: `breaking:` (non-canonical typo) is detected and the user is told to use `feat!:` or `BREAKING CHANGE:` footer. Subject length > 72 → warning (not block).
+- **G — npm CLI BCL extensions** in `/unpublish` Phase −1.4b. Cross-version cases beyond v0.11.0's coverage: `dist-tags = {}` empty-object vs missing-field; `npm whoami` username with/without `@` prefix; `npm audit` schema differs npm 6 (uses `actions[]`) vs npm 7+ (uses `vulnerabilities{}`); `npm config get` `undefined` literal normalization.
+- **H — Workspace symlink edge cases** in `/init` Phase 1a. STOPs if `pnpm-workspace.yaml` glob expands to zero matching dirs (typo or empty workspace) OR matching dirs lack `package.json`. Surfaces "publishing only N of M packages" if mixed `private: true` + public packages exist in the same workspace.
+- **I — `gh` GraphQL impl for >20-package portfolios** in `/status` Phase 2. Provides the actual GraphQL query template (one batch call vs N×2 individual calls). Falls back to per-repo individual calls if graphql fails (insufficient token scope, malformed query, rate-limited at global level).
+- **J — CRLF / `core.autocrlf` detection (NEW)** in `/unpublish` Phase −1.5b. Detects `git config core.autocrlf=true` and surfaces `core.autocrlf=input` recommendation for npm-shipped repos (CRLF in tarball can break Unix consumers running bin scripts). Non-fatal; warning only.
+- **K — `git log` truncation cap (NEW)** in `/release` Phase B.3. Caps at `--max-count=500`; if hit, surfaces "X commits since LATEST_TAG (showing first 500); review CHANGELOG carefully before approving" warning. Keeps conventional-commit parsing bounded.
+- **L — Pre-push hook failure rollback (NEW)** in `/release` C.3 (canonical), `/prerelease` C.3, `/hotfix` E.4, `/deps` Phase 5. Distinguishes server-side `pre-receive` rejection from client-side `pre-push` rejection; surfaces case-specific recovery options including `--no-verify` bypass and `rm .git/hooks/pre-push` for the client-side case.
+
+### Why minor (not patch)
+
+The new H8/SIGINT/SSL/CRLF/log-cap behaviors change observable runtime characteristics (e.g., `/status` now retries on 429 instead of failing fast; `/release` now caps `git log` and warns on truncation). Following conventional commits → minor bump.
+
+### Upgrading
+
+`/reload-plugins` after marketplace update. No state.json migration needed. The new SIGINT trap pattern requires sibling skills to set state flags at mutation points; for skills not yet updated, the trap simply has nothing to clean (graceful no-op). The H8 backoff helper is referenced from siblings; if a skill doesn't yet wrap its `npm view` calls, the existing behavior is preserved.
+
+### v1.0.0 status
+
+After v0.12.0, all code-level pre-v1.0.0 entry criteria from `docs/stability.md` are complete. Three external/temporal items remain:
+- Demo / showcase repo (`solo-npm-example`)
+- Wider adoption signal (external user beyond rfc-bcp47/ncbijs/npm-trust)
+- Skill-spec drift caught once via the regression checklist before being noticed in production
+
+These need real-world usage to validate API stability, not code changes. v1.0.0 will ship when those three are met.
+
 ## v0.11.0 — Tier-2 strict-safety hardening pass (universal Phase A + concrete C/H + prompt validation)
 
 Major hardening release — closes ~16 Tier-2 strict-safety gaps surfaced by the post-v0.10.1 audit. No new features, no behavioral changes for the happy path. Substantially better diagnostics, schema resilience, concurrent-safety, and prompt-extraction validation.

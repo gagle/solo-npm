@@ -238,13 +238,16 @@ git commit -m "chore: release v${NEXT_VERSION}"
 # never silently continue past hook failure.
 HOTFIX_SHA=$(git rev-parse HEAD)   # captured for Phase F.5 forward-port
 
-# Push the maintenance-branch commit with rejection categorization (non-FF / hook / branch-protection / auth)
+# Push the maintenance-branch commit with rejection categorization
+# (non-FF / pre-receive hook / pre-push hook (Tier-3 L) / branch-protection / auth)
+# + SSL/TLS error remediation per /unpublish Phase −1.10.
+# See /release C.3 canonical for full case-by-case wording.
 PUSH_OUT=$(timeout 60 git push origin "${TARGET_MAJOR}.x" 2>&1)
 PUSH_RC=$?
 if [ $PUSH_RC -ne 0 ]; then
-  # Same case-by-case categorization as /release C.3 — see canonical wording there
   echo "ERROR: git push origin ${TARGET_MAJOR}.x failed (exit $PUSH_RC):"
   echo "$PUSH_OUT" | sed 's/^/  /'
+  ssl_remediation_if_applicable "$PUSH_OUT" || true
   exit 1
 fi
 

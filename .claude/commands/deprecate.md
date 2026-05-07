@@ -130,7 +130,11 @@ Options:
   - Abort
 ```
 
-## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6 from `/unpublish` reference)
+## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6, H8 from `/unpublish` reference)
+
+**H8 rate-limit backoff (v0.12.0)**: when Phase A.3 enumerates versions per-package via `npm view <pkg> versions --json` across many packages (mass-deprecate scenario across the whole portfolio), wrap each `npm view` in `npm_with_h8_backoff` from `/unpublish` Phase −1.9. Same as `/status` Phase 2. Surface "rate-limited; cannot enumerate versions for `<pkg>`" per-package on exhaustion; STOP the whole run only if >50% of packages exhausted (otherwise carry on with the packages that succeeded).
+
+**Carry-forward patterns:**
 
 Before destructive `npm deprecate` calls, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2; concrete adaptation per pattern:
 

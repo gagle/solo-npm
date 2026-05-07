@@ -52,9 +52,9 @@ This skill applies the standard solo-npm error patterns where they're relevant. 
 | `package.json#engines.node` | node engine | Skip if already `>=24` |
 | `package.json#devDependencies.npm-trust` | devDep presence | Suggest `pnpm add -D npm-trust` if missing |
 | `.nvmrc` | content | Skip if already pinning ≥24 |
-| `.npmrc` (project) | `registry=`, `@scope:registry=`, `_authToken=` | Detect scope mappings, auth refs |
+| `.npmrc` config (read via API, NOT ad-hoc grep) | `npm config get registry`, `npm config get @<scope>:registry`, `npm config get _authToken` | Detect scope mappings, auth refs (Tier-3 E, v0.12.0) |
 | `.github/workflows/*.yml` | filenames + content | Skip release.yml if exists |
-| `pnpm-workspace.yaml` / `package.json#workspaces` | presence | Single-package vs. monorepo |
+| `pnpm-workspace.yaml` / `package.json#workspaces` | presence + glob expansion | Single-package vs. monorepo. **Workspace edge checks (Tier-3 H, v0.12.0):** if globs expand to zero matching dirs OR matching dirs lack `package.json` → STOP with diagnostic. If matching packages mix `private: true` and public, surface "publishing only N of M packages" in plan so the user is explicit |
 | `nx.json` | presence | Nx monorepo flavor |
 | `git remote get-url origin` | URL | Repo slug inference |
 | `.claude/skills/release/`, `.claude/skills/verify/` | presence | Wrapper templates: skip if exist |
@@ -263,7 +263,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
-#### `.npmrc` (project root, optional)
+#### `.npmrc` (project root, optional) — read via `npm config get` API (Tier-3 E, v0.12.0)
 
 **Only generate** for scoped private registry. Mappings only — never
 auth tokens.
@@ -272,8 +272,23 @@ auth tokens.
 @scope:registry=<PRIVATE_REGISTRY_URL>
 ```
 
-If `.npmrc` already exists, leave existing lines untouched and append
-the scope mapping if not present.
+**Reading existing config**: Phase 1a's detection step uses `npm config get` rather than ad-hoc `.npmrc` grep. npm handles precedence (project < user < global), line continuations, comments, quoted values, and env-var substitution natively:
+
+```bash
+# Detect existing scope mapping correctly:
+EXISTING_REGISTRY=$(npm config get "@${SCOPE}:registry" 2>/dev/null)
+if [ -n "$EXISTING_REGISTRY" ] && [ "$EXISTING_REGISTRY" != "undefined" ]; then
+  # Already mapped; skip writing
+  echo "Existing scope mapping detected: @${SCOPE} → $EXISTING_REGISTRY (via npm config; skipping write)"
+fi
+
+# Default registry (project-level if set, else user's, else npmjs.org):
+EFFECTIVE_REGISTRY=$(npm config get registry 2>/dev/null)
+```
+
+Note: `npm config get` may return the literal string `undefined` on older npm versions if the key isn't set — the BCL guard from `/unpublish` Phase −1.4b normalizes both `""` and `"undefined"` to "unset".
+
+**Writing** still uses direct `.npmrc` append (npm config set has precedence quirks for project-level writes from inside a script that may be running with a different cwd). If `.npmrc` already exists, leave existing lines untouched and append the scope mapping if not present.
 
 #### `.claude/skills/release/SKILL.md` — thin wrapper
 

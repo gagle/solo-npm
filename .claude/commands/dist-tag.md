@@ -148,7 +148,11 @@ Options:
   - Abort
 ```
 
-## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6 from `/unpublish` reference)
+## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6, H8 from `/unpublish` reference)
+
+**H8 rate-limit backoff (v0.12.0)**: Phase A.3 fetches dist-tags per-package via `npm view <pkg> dist-tags --json`. For portfolio-wide ops (`SCOPE=all` against many packages), wrap each `npm view` in `npm_with_h8_backoff` from `/unpublish` Phase −1.9. Same exhaustion handling as `/deprecate`.
+
+**Carry-forward patterns:**
 
 Before destructive `npm dist-tag` calls, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2; concrete adaptation per pattern:
 

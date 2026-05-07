@@ -110,6 +110,30 @@ fi
 
 This is checked even though `/unpublish` itself doesn't make commits — it's the entry point check for the H7 pattern, applied universally so the user fixes config issues once. Skills that DO commit (release, prerelease, hotfix, deps, init) absolutely depend on this.
 
+### −1.3b Environment-variable validation (Tier-3 D, v0.12.0)
+
+```bash
+# $HOME must exist and be writable — npm writes ~/.npmrc, ~/.npm/_cacache
+if [ -z "$HOME" ] || [ ! -w "$HOME" ]; then
+  echo "ERROR: \$HOME is unset or not writable (HOME='$HOME')."
+  echo "       npm requires \$HOME to read/write ~/.npmrc and ~/.npm/_cacache."
+  echo "       This usually only happens in sandboxed CI environments."
+  echo "       Fix:   export HOME=/path/to/writable/home   then re-invoke."
+  exit 1
+fi
+
+# $TMPDIR fallback for subprocess temp files
+: "${TMPDIR:=/tmp}"
+if [ ! -w "$TMPDIR" ]; then
+  echo "ERROR: \$TMPDIR='$TMPDIR' is not writable."
+  echo "       Subprocess temp files (e.g., curl response capture) need it."
+  echo "       Fix:   export TMPDIR=/tmp   or another writable dir, then re-invoke."
+  exit 1
+fi
+```
+
+Niche check (most environments are fine), but solo-npm-managed CI environments occasionally hit it.
+
 ### −1.4 Atomic state.json write helper (used in Phase D.2)
 
 Every state.json write in this skill (and the H7 reference for sibling skills) uses an atomic write pattern: write to a temp file, then rename. Non-atomic `writeFileSync` truncates the file before writing, so a process killed mid-write leaves a zero-byte (or partially-written) cache.
@@ -172,6 +196,18 @@ HAS_PROVENANCE=$(npm view "<pkg>@<v>" dist.attestations --json 2>/dev/null | jq 
 
 In skill bodies, document the fallback inline rather than assuming the happy-path schema. If a field is essential and missing → STOP with diagnostic, not assume default.
 
+**npm CLI BCL extensions (G, v0.12.0)**: additional cross-version cases beyond the table above:
+
+| Field / call | Variability | Fallback |
+|---|---|---|
+| `dist-tags` returned as `{}` empty object | Equivalent to "no tags configured" — common on never-published packages | Treat as no-`@latest`-yet; fine in /unpublish where the package is being removed anyway. In other skills, surface "no dist-tags set" rather than crashing |
+| `dist-tags` field entirely missing | Some private registries omit it | Same as above — treat as empty |
+| `npm whoami` returns `@username` (with `@` prefix) | Some npm versions/configurations | Strip leading `@` before comparison: `WHOAMI=${WHOAMI#@}` |
+| `npm whoami` returns email rather than username | Account configured with email-as-identifier (rare) | Use as-is for comparison; document that the username displayed may not match the package owner-list format |
+| `npm audit --json` schema | npm 6 uses `{actions[], advisories{}, metadata{}}`; npm 7+ uses `{vulnerabilities{}, metadata{}}` | Detect via presence of `actions` field → npm 6 fallback. v0.10.0+ documents this in /audit Phase 1 |
+| `npm version` output | Older versions print prefixed `v`; newer print bare semver | Always parse with semver lib, not raw string match |
+| `npm config get <key>` returning `undefined` literal vs empty string | Older npm prints `undefined`; newer prints empty | Normalize: `[ -z "$VAL" ] || [ "$VAL" = "undefined" ]` → treat as unset |
+
 ### −1.4c `npm pack --dry-run` defensive parsing (D4)
 
 `npm pack --dry-run --json` output schema:
@@ -228,6 +264,27 @@ fi
 ```
 
 Apply universally in Phase A of release, prerelease, hotfix, deps, and init. `/unpublish` itself doesn't strictly need this (no commits are created), but the check is cheap and the canonical reference body owns it.
+
+### −1.5b CRLF / `core.autocrlf` detection (Tier-3 J, v0.12.0)
+
+Windows users with `core.autocrlf=true` see fake whitespace diffs (CRLF on disk, LF in repo). For npm-shipped repos, this also affects what ends up in the tarball — Unix consumers running `node ./bin/cli` get CRLF endings that some shells mishandle.
+
+```bash
+AUTOCRLF=$(git config core.autocrlf 2>/dev/null)
+if [ "$AUTOCRLF" = "true" ]; then
+  echo "WARN: git config core.autocrlf=true detected on this repo."
+  echo "      For npm-published packages, this can cause:"
+  echo "        a) Fake whitespace diffs on every checkout (CRLF on disk vs LF in repo)"
+  echo "        b) CRLF line endings in your published tarball (Unix consumers may mishandle bin scripts)"
+  echo
+  echo "      Recommended for npm-shipped repos:"
+  echo "        git config core.autocrlf input    # checks out with LF; commits with LF"
+  echo
+  echo "      This is a WARNING, not a STOP — current operation continues."
+fi
+```
+
+Non-fatal; surface once and continue. Skills that mutate files (release, prerelease, hotfix, deps, init) may want to elevate to a STOP if they actually detect CRLF in their output, but that's per-skill discretion.
 
 ### −1.6 Worktree detection (A2, applies universally)
 
@@ -299,6 +356,128 @@ echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT
 # NOTE: trap doesn't fire on SIGKILL — that's why the stale-cleanup above exists.
 ```
+
+### −1.9 H8 rate-limit backoff helper (Tier-3 A, NEW v0.12.0)
+
+Portfolio-fan-out operations (`/status` Phase 2, `/deprecate` Phase A.3, `/dist-tag` Phase A.3, `/owner` Phase A.3) parallelize many `npm view` calls. The npm registry rate-limits aggressive callers with HTTP 429. Currently those failures collapse into "—" with no signal that data was rate-limited (vs unavailable).
+
+Canonical helper — sibling skills reference this implementation:
+
+```bash
+# H8 helper: run a registry call with exponential backoff on 429.
+# Args: $1 = the bash command to run, captured as a string
+# Returns: 0 on success (output on stdout), non-zero with diagnostic on stderr if exhausted.
+npm_with_h8_backoff() {
+  local CMD="$1"
+  local DELAYS="1 2 4 8"  # seconds; total max wait = 15s + 4 attempts
+  local ATTEMPT=0
+  local OUT RC
+
+  for DELAY in $DELAYS; do
+    ATTEMPT=$((ATTEMPT + 1))
+    OUT=$(eval "$CMD" 2>&1)
+    RC=$?
+    if [ $RC -eq 0 ]; then
+      echo "$OUT"
+      return 0
+    fi
+    # Detect 429 / rate-limit in stderr
+    if echo "$OUT" | grep -qE "429|rate.?limit|Too Many Requests|E429"; then
+      # Apply ±20% jitter to avoid thundering-herd retries
+      JITTER=$((RANDOM % (DELAY * 4) / 10))   # 0..0.4*DELAY in tenths
+      ACTUAL_DELAY=$((DELAY + JITTER / 10))
+      echo "WARN: rate-limited on attempt $ATTEMPT; retrying in ${ACTUAL_DELAY}s (with jitter)" >&2
+      sleep $ACTUAL_DELAY
+      continue
+    fi
+    # Not a rate-limit error — return immediately, don't retry
+    echo "$OUT" >&2
+    return $RC
+  done
+
+  echo "ERROR: rate-limited after $ATTEMPT attempts (15s+ total wait). Try again later." >&2
+  return 1
+}
+
+# Usage: result=$(npm_with_h8_backoff 'timeout 30 npm view @scope/foo --json 2>/dev/null')
+```
+
+Apply selectively: read-only `npm view` calls in fan-out paths benefit. Single-call paths (`/release` C.7 verify) don't need backoff — propagation lag (H4) is the dominant failure there, and H4's 3×5s retry already covers it.
+
+### −1.10 SSL/TLS error detection + remediation (Tier-3 B, NEW v0.12.0)
+
+External calls to npm registry, deps.dev, GitHub all use HTTPS. SSL/TLS failures present a confusing variety of error messages — corporate proxies, transient handshake failures, expired CA bundles, custom certs.
+
+Detection patterns + remediation:
+
+```bash
+# After any external HTTPS call (curl, git push, npm publish/view), if the call failed,
+# scan stderr for SSL-related patterns:
+ssl_remediation_if_applicable() {
+  local STDERR="$1"
+  if echo "$STDERR" | grep -qE "SSL_ERROR|SSL_connect|certificate verify|cert.*expired|unable to get local issuer|self.signed|TLSV1_ALERT|ssl3_get_server"; then
+    echo "ERROR: SSL/TLS error from external call."
+    echo "       This is most often one of:"
+    echo
+    echo "  1. Transient network/handshake glitch — retry in 30s. (We've seen this on github.com pushes during peak hours.)"
+    echo
+    echo "  2. Corporate proxy with MITM cert chain. Configure your CA bundle:"
+    echo "       npm config set cafile /path/to/corp-ca-bundle.pem"
+    echo "       git config --global http.sslCAInfo /path/to/corp-ca-bundle.pem"
+    echo "       export SSL_CERT_FILE=/path/to/corp-ca-bundle.pem  # for curl"
+    echo
+    echo "  3. System CA bundle outdated. Update OS certs:"
+    echo "       macOS:  brew install ca-certificates"
+    echo "       Linux:  update-ca-certificates  (Debian) / update-ca-trust  (RHEL)"
+    echo
+    echo "  4. Last resort (DEV ONLY, never in CI/prod): bypass cert check"
+    echo "       curl --insecure ...    or    GIT_SSL_NO_VERIFY=true git push ..."
+    echo "       This DOES NOT solve the underlying problem — only verifies the issue is cert-related."
+    return 0   # signal caller that SSL remediation was surfaced
+  fi
+  return 1   # not an SSL error
+}
+```
+
+The transient-retry case is highest-frequency for solo devs on home networks. The corporate-proxy case is highest-frequency in enterprise environments. Both surface clear remediation that cuts the user's debug time from minutes to seconds.
+
+### −1.11 SIGINT signal handling (Tier-3 C, NEW v0.12.0)
+
+`trap … EXIT` cleans up on graceful exit (success or error-with-`exit`). It does NOT fire on SIGKILL (covered by `−1.8` stale-lock cleanup). For SIGINT (Ctrl+C), we extend the trap to do **state-aware cleanup** so an interrupted skill doesn't leave half-done git/npm state that breaks the next attempt.
+
+Convention: skills set state-flag environment variables as they progress through destructive multi-step phases. The SIGINT handler reads those flags and cleans accordingly.
+
+```bash
+# Set up SIGINT handler ONCE at the start of Phase −1 (this skill) or Phase A (sibling skills).
+LOCAL_TAG_PENDING_PUSH=""   # set to the tag name (e.g., "v1.0.0") when local tag created but not yet pushed
+STASH_PENDING=""            # set to the stash message when a stash is on the stack but not popped
+PUBLISH_CONFIG_PENDING=""   # set to the package.json path when publishConfig.tag was modified but not yet committed
+
+cleanup_on_signal() {
+  echo
+  echo "WARN: interrupted by user. Cleaning up in-flight state…"
+  if [ -n "$LOCAL_TAG_PENDING_PUSH" ]; then
+    echo "  - deleting local-only tag $LOCAL_TAG_PENDING_PUSH (was created locally but not yet pushed to origin)"
+    git tag -d "$LOCAL_TAG_PENDING_PUSH" 2>/dev/null
+  fi
+  if [ -n "$STASH_PENDING" ]; then
+    echo "  - dropping pending stash '$STASH_PENDING' (was created mid-skill; uncommitted changes preserved in working tree)"
+    git stash drop 2>/dev/null
+  fi
+  if [ -n "$PUBLISH_CONFIG_PENDING" ]; then
+    echo "  - reverting publishConfig.tag mutation in $PUBLISH_CONFIG_PENDING (was set mid-skill; not committed)"
+    git checkout -- "$PUBLISH_CONFIG_PENDING" 2>/dev/null
+  fi
+  # The EXIT trap (lockfile cleanup) still fires after this on signal exit.
+  echo "Cleanup complete. Safe to re-invoke the skill."
+  exit 130   # standard exit code for "interrupted by SIGINT"
+}
+trap cleanup_on_signal INT
+```
+
+Sibling skills reference this pattern and set their own state flags at the corresponding mutation points. `/release`, `/prerelease`, `/hotfix` set `LOCAL_TAG_PENDING_PUSH` between `git tag` and `git push --tags`. `/deps` sets `STASH_PENDING` between `git stash` and `git stash pop`. `/hotfix` sets `PUBLISH_CONFIG_PENDING` between the package.json mutation and the commit.
+
+This is **scoped, not exhaustive** — covers the high-value cleanups where mid-skill interruption commonly leaves bad state. Doesn't try to handle every possible interruption point (which would be a state machine).
 
 ## Phase 0 — Read prompt context
 

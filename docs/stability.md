@@ -61,7 +61,7 @@ These are explicit non-promises so consumers don't accidentally depend on them:
 
 ## What needs to land before v1.0.0
 
-The pre-v1.0.0 punch list (status as of v0.11.0):
+The pre-v1.0.0 punch list (status as of v0.12.0):
 
 | Item | Status | Where |
 |---|---|---|
@@ -84,25 +84,36 @@ The pre-v1.0.0 punch list (status as of v0.11.0):
 | **Tier-2 strict-safety hardening — Section C** (concrete H3 in deprecate/dist-tag/owner; H4 retry in audit; H5 lock in release/hotfix/prerelease; H6 chain-failure in audit/status/init) | ✓ shipped v0.11.0 | All affected skills |
 | **Tier-2 strict-safety hardening — Section D** (state.json schema preservation; npm view defensive parsing; npm-trust npx pin; npm pack defensive parsing) | ✓ shipped v0.11.0 | Canonical extends in unpublish.md Phase −1.4; D3 in trust.md |
 | **Tier-2 strict-safety hardening — Section E** (semver/identifier/scope regex validation in Phase 0.5) | ✓ shipped v0.11.0 | Canonical in unpublish.md Phase 0.5; reference in 5 sibling skills |
+| **Tier-3 stability — A** (rate-limit backoff helper H8) | ✓ shipped v0.12.0 | unpublish.md Phase −1.9; ref in /status, /deprecate, /dist-tag, /owner |
+| **Tier-3 stability — B** (SSL/TLS error remediation) | ✓ shipped v0.12.0 | unpublish.md Phase −1.10; applied at git push + curl + npm boundaries |
+| **Tier-3 stability — C** (SIGINT signal handling) | ✓ shipped v0.12.0 | unpublish.md Phase −1.11; state-aware cleanup |
+| **Tier-3 stability — D** (env-var validation: $HOME/$TMPDIR) | ✓ shipped v0.12.0 | unpublish.md Phase −1.3b |
+| **Tier-3 stability — E** (.npmrc ad-hoc parsing → `npm config get` API) | ✓ shipped v0.12.0 | init.md Phase 1c |
+| **Tier-3 stability — F** (conventional-commits strictness with did-you-mean) | ✓ shipped v0.12.0 | release.md Phase B.3 |
+| **Tier-3 stability — G** (npm CLI BCL extensions: dist-tags, whoami, audit schema) | ✓ shipped v0.12.0 | unpublish.md Phase −1.4b |
+| **Tier-3 stability — H** (workspace symlink edges: empty glob, mixed private+public) | ✓ shipped v0.12.0 | init.md Phase 1a |
+| **Tier-3 stability — I** (gh GraphQL fan-in for >20-pkg portfolios) | ✓ shipped v0.12.0 | status.md Phase 2 |
+| **Tier-3 adjacent — J** (CRLF / core.autocrlf detection) | ✓ shipped v0.12.0 | unpublish.md Phase −1.5b |
+| **Tier-3 adjacent — K** (git log truncation cap at 500) | ✓ shipped v0.12.0 | release.md Phase B.3 |
+| **Tier-3 adjacent — L** (pre-push hook failure rollback) | ✓ shipped v0.12.0 | release.md C.3 (canonical) + ref in prerelease/hotfix/deps |
 | **Demo / showcase repo** (`solo-npm-example`) | open | not yet started |
 | **Wider adoption signal** — at least one external user beyond rfc-bcp47/ncbijs | open | depends on outreach |
 | **Skill-spec drift caught at least once via the regression checklist** before being noticed in production | open | requires release cycles |
 
-The first 18 items are landed (v0.11.0 closed Sections A–E from the Tier-2 audit in a single release). The remaining 3 are external/temporal — they need real-world usage to validate that the API holds up. **v1.0.0 won't ship until those are met.**
+The first 30 items are landed (v0.12.0 closed all 12 Tier-3 items in a single release). **The code-level pre-v1.0.0 entry criteria are now complete.** The remaining 3 are external/temporal — they need real-world usage to validate that the API holds up. **v1.0.0 won't ship until those are met.**
 
-### Tier-3 items still deferred (post-v1.0.0 polish)
+### Post-v1.0.0 polish (finalized non-goals)
 
-These remain explicit non-goals or low-priority backlog items even after v1.0.0:
+After v0.12.0, the following remain explicit non-goals — not stability concerns, just polish or theoretical edge cases:
 
-- Rate-limit backoff (exponential 1s/2s/4s) for portfolio operations >30 packages
-- SSL cert error handling for corporate-proxy MITM cert chains
-- SIGINT/Ctrl+C signal handling cleanup beyond the existing trap-on-EXIT
-- Environment-variable validation (`$HOME`, `$TMPDIR`, `$PATH`)
-- `.npmrc` ad-hoc parsing replacement (use `npm config get` API)
-- Conventional-commits strictness (subject length, scope whitelist)
-- npm CLI major-version full backward-compat layer (D2 covers high-impact cases; full BCL is over-engineering)
-- Workspace symlink edge cases for monorepos (delegated to package manager)
-- `gh` GraphQL implementation for >30-package portfolios (currently documented in /status, not implemented)
+- **Concurrent rate-limit tracker** (`X-RateLimit-Remaining` header tracking) — over-engineering vs the simple H8 exp backoff, which already handles the real-world case
+- **Full npm CLI backward-compat layer** beyond the high-impact cases in v0.11.0 D2 + v0.12.0 G — the long tail of npm 6/7/8/9/10/11 schema variations is large, vendor-specific, and rarely hit by solo-dev workflows
+- **`gh` GraphQL for arbitrary fan-out** beyond `/status` — no other skill currently needs cross-repo aggregation; if a future skill does, it can reuse the `/status` Phase 2 template
+- **AI-prompt injection hardening** beyond the v0.11.0 Phase 0.5 regex validation — Claude itself handles the higher-order injection cases
+- **Output truncation for >500-dep `npm audit`** — defer until a real user with that many deps reports the issue
+- **Submodule state mismatch detection** — niche; submodules are uncommon in solo-dev npm workflows
+- **Tool version shadowing in PATH** (multiple installations of git/gh/npm) — H7's version reporting surfaces what we got; choosing the user's preferred is their environment concern
+- **CRLF as STOP rather than WARN** — current v0.12.0 surfaces a warning; elevating to STOP would block real-world Windows users with `core.autocrlf=true` repos that aren't actually broken
 
 ### v0.10.0 hardening summary
 

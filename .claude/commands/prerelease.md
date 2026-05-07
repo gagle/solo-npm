@@ -188,7 +188,7 @@ git commit -m "chore: release v${NEXT_VERSION}"
 
 ### C.3 Push (commit only) — with rejection categorization
 
-Apply the same git-push-rejection categorization as `/solo-npm:release` C.3 (canonical reference). Capture stderr, switch on common rejection patterns (non-fast-forward, server-side hook, branch protection, auth fail), and surface the matching remediation. Wrap with `timeout 60` to avoid indefinite hangs on stalled remotes. On any failure, halt before tagging.
+Apply the same git-push-rejection categorization as `/solo-npm:release` C.3 (canonical reference). Capture stderr, switch on common rejection patterns (non-fast-forward, server-side pre-receive hook, **client-side pre-push hook (Tier-3 L)**, branch protection, auth fail), and surface the matching remediation including `--no-verify` bypass for client-side hook rejection. Wrap with `timeout 60` to avoid indefinite hangs on stalled remotes. SSL/TLS error patterns get the additional remediation block from `/unpublish` Phase −1.10. On any failure, halt before tagging.
 
 ### C.4 Final pre-tag verification
 

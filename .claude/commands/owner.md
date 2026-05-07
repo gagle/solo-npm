@@ -113,7 +113,11 @@ Options:
   - Abort
 ```
 
-## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6 from `/unpublish` reference)
+## Phase C.0 — Error-handling patterns (H1, H2, H4, H5, H6, H8 from `/unpublish` reference)
+
+**H8 rate-limit backoff (v0.12.0)**: Phase A.3 fetches owner lists per-package via `npm owner ls`. For portfolio-wide ops, wrap each call in `npm_with_h8_backoff` from `/unpublish` Phase −1.9. Same exhaustion handling as `/deprecate`.
+
+**Carry-forward patterns:**
 
 Before destructive `npm owner` calls, apply the standard solo-npm error patterns. Canonical wording lives in `/unpublish` Phases C.0–D.2; concrete adaptation per pattern:
 

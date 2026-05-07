@@ -233,14 +233,46 @@ Parse `package.json#version` (or the main package's `package.json#version` for m
 
 If stable: continue to B.3. (B.5's options become only the stable-mode prompt; pre-release options have moved to /solo-npm:prerelease.)
 
-### B.3 Collect commits since `LATEST_TAG`
+### B.3 Collect commits since `LATEST_TAG` (with strictness checks, Tier-3 F+K, v0.12.0)
 
 ```bash
-git log "${LATEST_TAG}..HEAD" --format='%H %s'
+# Tier-3 K: cap at 500 commits to keep parsing bounded
+git log "${LATEST_TAG}..HEAD" --no-merges --max-count=500 --format='%H %s%n%b%n---'
+
+# After the call, count how many commits exist in the range:
+TOTAL_COMMITS=$(git rev-list --count --no-merges "${LATEST_TAG}..HEAD")
+if [ "$TOTAL_COMMITS" -gt 500 ]; then
+  echo "WARN: $TOTAL_COMMITS commits since ${LATEST_TAG}; showing first 500."
+  echo "      Review the CHANGELOG carefully before approving — auto-bump may miss types"
+  echo "      from the truncated tail (rare, but possible if breaking changes are clustered late)."
+  echo "      Consider releasing more frequently."
+fi
 ```
 
 Parse each line as a conventional commit: `type(scope)?(!)?: subject`.
 Drop commits that don't match the convention (typically merges).
+
+**Type whitelist (Tier-3 F)**: validate the type field against the canonical conventional-commits whitelist. Unrecognized types get a "did you mean" hint:
+
+```
+TYPE_WHITELIST = feat fix chore docs style refactor perf test build ci revert
+
+For each parsed commit:
+  if type not in TYPE_WHITELIST:
+    suggest = closest_levenshtein_match(type, TYPE_WHITELIST)
+    surface "WARN: commit <SHA> uses unknown type '<type>'. Did you mean '<suggest>'? Treating as Other."
+
+Special case — `breaking:` (non-standard but common typo for `feat!:`):
+  if type == "breaking":
+    surface "WARN: commit <SHA> uses 'breaking:' which is NOT canonical conventional-commits."
+    surface "      The canonical breaking-change indicators are 'feat!:', 'fix!:', etc., or a 'BREAKING CHANGE:' footer."
+    surface "      Treating as Other (NOT auto-promoting to major bump). If you intended major, amend the commit"
+    surface "      to 'feat!:' or add a 'BREAKING CHANGE:' footer + re-run /release."
+
+Subject length:
+  if len(subject) > 72:
+    surface "WARN: commit <SHA> subject is N chars (>72 conventional-commits guideline). Bump still derives correctly; just style note."
+```
 
 Group:
 
@@ -250,6 +282,7 @@ Group:
 - **Performance** — `perf`
 - **Reverts** — `revert`
 - **Other** — `chore`, `docs`, `test`, `build`, `ci`, `style`, `refactor` (informational only)
+- **Unknown** — anything else (surfaced as warning, treated as Other for bump derivation)
 
 ### B.4 Decide the bump (stable mode only)
 
@@ -426,11 +459,21 @@ if [ $PUSH_RC -ne 0 ]; then
       echo "Recovery: git fetch origin && git rebase origin/main"
       echo "         then re-run /solo-npm:release."
       ;;
-    *"pre-receive hook"*|*"pre-push hook"*|*"hook declined"*)
-      echo "ERROR: git push rejected by server-side hook."
+    *"pre-receive hook"*|*"hook declined"*)
+      echo "ERROR: git push rejected by server-side hook (pre-receive)."
       echo "Hook output:"
       echo "$PUSH_OUT" | sed 's/^/  /'
-      echo "Recovery: address the hook's complaint, amend the commit, then re-run /solo-npm:release."
+      echo "Recovery: address the hook's complaint (server-side, set by repo admin), amend the commit, then re-run /solo-npm:release."
+      ;;
+    *"pre-push hook"*)
+      echo "ERROR: git push rejected by client-side pre-push hook (Tier-3 L, v0.12.0)."
+      echo "Hook output:"
+      echo "$PUSH_OUT" | sed 's/^/  /'
+      echo "Recovery options:"
+      echo "  a) Address the hook's complaint (e.g., test failure in pre-push hook), then re-run /solo-npm:release."
+      echo "  b) Bypass the hook (emergency only): git push --no-verify"
+      echo "     Then re-run /solo-npm:release to resume from C.5 tagging."
+      echo "  c) Disable the hook for this repo: rm .git/hooks/pre-push  (or rename it)"
       ;;
     *"protected branch"*|*"branch protection"*|*"required status check"*)
       echo "ERROR: git push rejected by branch protection rules."
@@ -448,6 +491,10 @@ if [ $PUSH_RC -ne 0 ]; then
       echo "$PUSH_OUT" | sed 's/^/  /'
       ;;
   esac
+  # SSL/TLS error remediation per /unpublish Phase −1.10 (v0.12.0):
+  # if PUSH_OUT matches SSL_ERROR / cert / unable to get local issuer / TLSV1_ALERT,
+  # surface the four-option remediation block (transient retry / corp proxy / OS CA bundle / --insecure).
+  ssl_remediation_if_applicable "$PUSH_OUT" || true
   exit 1
 fi
 ```

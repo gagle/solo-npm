@@ -396,6 +396,78 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Verify**: no `npm version` call; no commits; no tags. The user gets a clear "did you mean" hint and can re-invoke with the correct identifier.
 
+### S24 — H8 rate-limit backoff fires on 429 (v0.12.0 A)
+
+**Setup**: contrived. Mock `npm view` to return HTTP 429 with `npm ERR! 429` in stderr (or wait for natural rate-limit during a portfolio-wide /status on a slow registry).
+
+**Trigger**: `/solo-npm:status` against a portfolio of 5+ packages where one package's registry call returns 429.
+
+**Expected**: that package's call passes through `npm_with_h8_backoff` (Phase −1.9 helper). On 429, the helper retries with exponential delays (1s → 2s → 4s → 8s) plus ±20% jitter, max 4 attempts. If all retries hit 429, the dashboard renders that package's row as `(rate-limited)` rather than `—` — disambiguating "throttled" from "unavailable".
+
+**Verify**: WARN messages "rate-limited on attempt N; retrying in Ks" appear in the trace. The other packages' rows render normally (the failure is per-package, not whole-skill).
+
+### S25 — SSL/TLS error surfaces 4-option remediation (v0.12.0 B)
+
+**Setup**: simulate by setting `GIT_SSL_NO_VERIFY=false` and pointing git at a self-signed remote, OR wait for a real transient SSL_ERROR from github.com (we hit it on the v0.10.1 push).
+
+**Trigger**: any skill that calls `git push` or `curl` to deps.dev/npmjs API.
+
+**Expected**: stderr matches the SSL pattern (`SSL_ERROR_*` / `cert*` / `unable to get local issuer` / `TLSV1_ALERT`). The skill captures the failure, surfaces the standard 4-option remediation:
+1. Transient retry hint
+2. Corporate-proxy CA bundle config
+3. OS CA bundle update commands (brew / update-ca-certificates / update-ca-trust)
+4. Last-resort `--insecure` / `GIT_SSL_NO_VERIFY=true` (DEV ONLY)
+
+**Verify**: the user gets actionable remediation, not just a verbatim curl/git stderr dump. Most users hit case 1 (transient) and recover by re-running the skill within 30s.
+
+### S26 — SIGINT mid-skill cleanup (v0.12.0 C)
+
+**Setup**: invoke `/solo-npm:release` and pause it post-Phase-C.5 (after `git tag` ran but before `git push --tags` succeeded). Press Ctrl+C.
+
+**Expected**: the SIGINT trap from `/unpublish` Phase −1.11 fires:
+- WARN message "interrupted by user. Cleaning up in-flight state…"
+- Detects `LOCAL_TAG_PENDING_PUSH=v<NEXT_VERSION>` is set
+- Runs `git tag -d v<NEXT_VERSION>` to remove the local-only tag
+- The EXIT trap also fires afterward (lockfile cleanup)
+- Final message: "Cleanup complete. Safe to re-invoke the skill."
+- Exit code: 130 (standard SIGINT exit)
+
+**Verify**: `git tag --list v<NEXT_VERSION>` returns empty. `.solo-npm/locks/<repo-root-hash>.lock` is gone. Re-invoking `/solo-npm:release` works without tag-collision errors.
+
+### S27 — `.npmrc` API used correctly for scope detection (v0.12.0 E)
+
+**Setup**: project with `.npmrc` containing `@myorg:registry=https://registry.example.com/` set.
+
+**Trigger**: `/solo-npm:init` on this project.
+
+**Expected**: Phase 1a uses `npm config get @myorg:registry` (not grep on `.npmrc`). Returns `https://registry.example.com/`. Phase 1c detects this is already mapped and skips writing.
+
+**Verify**: ad-hoc `.npmrc` grep is NOT invoked (search the trace for `grep .npmrc` patterns — should be absent in v0.12.0). The `npm config get` call is invoked instead. The output handles the "undefined" literal vs empty string ambiguity correctly per the BCL guard.
+
+### S28 — Conventional-commits typo rejected with did-you-mean (v0.12.0 F)
+
+**Setup**: a repo where the commit since the last tag is `breaking: drop Node 18 support` (non-canonical type instead of `feat!:`).
+
+**Trigger**: `/solo-npm:release`.
+
+**Expected**: Phase B.3 type-whitelist check classifies `breaking:` as unrecognized, surfaces:
+- WARN "commit <SHA> uses 'breaking:' which is NOT canonical conventional-commits"
+- Suggests the canonical alternatives: `feat!:`, `fix!:`, or `BREAKING CHANGE:` footer
+- Treats as Other (informational only) — does NOT auto-promote to major bump
+- Phase B.4 sees only Other commits → STOPs with "nothing to release"
+
+**Verify**: no version bump derived. User can amend the commit to `feat!:` and re-run /release.
+
+### S29 — gh GraphQL falls back to per-repo on graphql failure (v0.12.0 I)
+
+**Setup**: a portfolio with 25 unique repos. Use a `gh` token without sufficient repo scope (or simulate by malforming the GraphQL query).
+
+**Trigger**: `/solo-npm:status`.
+
+**Expected**: Phase 2 triggers GraphQL fan-in (>20 repos threshold). The single `gh api graphql` call fails (insufficient scope, malformed query, etc.). Skill surfaces "WARN: gh api graphql fan-in failed: <verbatim>. Falling back to per-repo individual gh repo view + gh run list calls." Then proceeds with per-repo fallback, each call wrapped in H8 backoff.
+
+**Verify**: the dashboard still renders (fallback succeeded). User sees the GraphQL warning in the trace + can decide whether to re-run with a higher-scope token.
+
 ## Drift indicators to watch
 
 When walking through these scenarios, **suspect drift** if you see:
