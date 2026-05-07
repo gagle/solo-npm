@@ -69,13 +69,12 @@ These are explicit non-promises so consumers don't accidentally depend on them:
 | `README.md` audit — verify the "Commands at a glance" + detail subsections still reflect v0.13.0 surface | Docs | Maintainer |
 | `docs/regression.md` audit — verify S1–S12 (early scenarios) haven't drifted relative to current skill bodies | Docs | Maintainer |
 | Run the regression checklist (S1–S33) end-to-end at least once | Validation | Maintainer |
-| `solo-npm-example` demo repo creation | New repo | Maintainer |
 | Wider adoption signal — at least one external user beyond the maintainer's portfolio | External | Outreach |
 | Skill-spec drift caught once via the regression checklist before being noticed in production | Temporal | Time + release cycles |
 
-The first 4 are within the maintainer's reach to do directly. The last 3 need the world.
+The first 4 are within the maintainer's reach to do directly. The last 2 need the world.
 
-**v1.0.0 ships when all 7 are met.** Internal patterns (phase numbering, AskUserQuestion option text, etc.) may keep iterating within v0.x even though the structural commitments above are already shaped to be v1.0.0-stable.
+**v1.0.0 ships when all 6 are met.** Internal patterns (phase numbering, AskUserQuestion option text, etc.) may keep iterating within v0.x even though the structural commitments above are already shaped to be v1.0.0-stable.
 
 ## Versioning policy in v0.x
 
