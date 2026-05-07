@@ -272,6 +272,27 @@ git checkout package.json pnpm-lock.yaml
 # Or for monorepo: git checkout package.json pnpm-lock.yaml packages/*/package.json
 ```
 
+**B2 git stash pop conflict recovery (v0.11.0)**: 4a's snapshot uses `git stash` + `stash pop`. If a prior batch already modified files that the current batch's stash references, `git stash pop` can fail with merge conflicts and leave the stash on the stack:
+
+```bash
+STASH_OUT=$(git stash pop --quiet 2>&1)
+STASH_RC=$?
+if [ $STASH_RC -ne 0 ] && echo "$STASH_OUT" | grep -qE "conflict|CONFLICT|merge"; then
+  echo "ERROR: git stash pop hit merge conflicts during /deps rollback."
+  echo "       Conflicted files:"
+  git diff --name-only --diff-filter=U | sed 's/^/         /'
+  echo
+  echo "       The stash is still on the stack: git stash list"
+  echo "       Recovery options:"
+  echo "         a) Resolve conflicts manually, then 'git stash drop' to clear the stack"
+  echo "         b) Discard the stash entirely: 'git stash drop'"
+  echo "         c) Re-apply later when the working tree is cleaner: 'git stash apply' on a clean tree"
+  echo
+  echo "       /deps cannot continue automatically — rollback would compound the conflict."
+  exit 1
+fi
+```
+
 (The rollback happens before diagnosis to leave the working tree clean for analysis.)
 
 **If `agent-skills@*` is installed** (check Claude Code's enabled plugins):

@@ -123,6 +123,39 @@ Before destructive `npm owner` calls, apply the standard solo-npm error patterns
 - **H5 — Concurrent invocation lock**: at Phase C start (per package), acquire `.solo-npm/locks/<sanitized-pkg-name>.lock`. Refuse to start if another solo-npm skill holds it.
 - **H6 — Chain-target failure recovery**: this skill is currently standalone (no auto-chain in or out), but if a future invocation comes from another skill (e.g., a portfolio bus-factor remediation chain), surface any internal STOP verbatim upward.
 
+## Phase C.0a — H3 auth-race re-check + H5 lock acquisition (concrete impl)
+
+Mirrors `/solo-npm:deprecate` Phase C.0a (canonical wording). Phase A.1 ran `npm whoami` and stashed the result; this re-check fires immediately before the first destructive `npm owner` call.
+
+```bash
+# H3: re-check npm session is still valid AND still same user
+WHOAMI_AT_PHASE_A="$(cat /tmp/.solo-npm-whoami-owner 2>/dev/null)"
+WHOAMI_NOW=$(timeout 30 npm whoami 2>/dev/null)
+if [ -z "$WHOAMI_NOW" ] || [ "$WHOAMI_NOW" != "$WHOAMI_AT_PHASE_A" ]; then
+  echo "ERROR: npm session expired or changed during Phase B gate."
+  echo "       Phase A: $WHOAMI_AT_PHASE_A    Now: ${WHOAMI_NOW:-<no session>}"
+  echo "       Re-authenticate, then re-invoke /solo-npm:owner."
+  exit 1
+fi
+
+# H5: per-package lock with stale-PID auto-cleanup (per /unpublish Phase −1.8)
+for PKG in $TARGET_PACKAGES; do
+  LOCK_FILE=".solo-npm/locks/$(echo "$PKG" | sed 's|/|_|g').lock"
+  if [ -f "$LOCK_FILE" ]; then
+    STALE_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$STALE_PID" ] && kill -0 "$STALE_PID" 2>/dev/null; then
+      echo "ERROR: another solo-npm skill holds $LOCK_FILE (PID $STALE_PID alive)."
+      exit 1
+    fi
+    [ -n "$STALE_PID" ] && echo "WARN: removing stale lockfile $LOCK_FILE (PID $STALE_PID dead)"
+    rm -f "$LOCK_FILE"
+  fi
+  mkdir -p .solo-npm/locks
+  echo $$ > "$LOCK_FILE"
+done
+trap 'for PKG in $TARGET_PACKAGES; do rm -f ".solo-npm/locks/$(echo "$PKG" | sed "s|/|_|g").lock"; done' EXIT
+```
+
 ## Phase C — Execute
 
 For each mutation, with **200ms inter-call backoff**:

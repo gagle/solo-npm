@@ -171,6 +171,25 @@ Apply pattern audits to the file list:
 Size audits:
 
 - `unpackedSize > 5 MB` → warning. Surface top-10-largest-files breakdown so user can investigate.
+
+**B6 defensive JSON parsing (v0.11.0)**: validate the pack output schema before reading fields. npm 7 may not emit `unpackedSize` or `entryCount`; private/legacy registries may emit a different shape. Apply the canonical defensive-parse pattern from `/unpublish` Phase −1.4c:
+
+```javascript
+// Validate the response is well-formed BEFORE reading fields
+if (!Array.isArray(packOutput) || packOutput.length === 0) {
+  // Fall back to text-mode pack parse (yarn 1.x already does this; npm/pnpm rarely needs it)
+  // Surface non-fatal warning: "pack JSON output unexpected; falling back to text parse"
+}
+const pkg = packOutput[0];
+let unpackedSize = pkg.unpackedSize;
+if (typeof unpackedSize !== 'number') {
+  // npm 7 may omit; sum file sizes manually
+  unpackedSize = (pkg.files || []).reduce((sum, f) => sum + (f.size || 0), 0);
+}
+const entryCount = (typeof pkg.entryCount === 'number') ? pkg.entryCount : (pkg.files || []).length;
+```
+
+If `pkg.files` is also missing/empty, surface a HARD warning: *"npm pack --dry-run returned no file list; tarball audit cannot proceed. Investigate via `npm pack --dry-run` (without --json) for human-readable output."*
 - `entryCount > 200` → info (suggests potential over-inclusion).
 
 #### Secrets-detection: hard STOP

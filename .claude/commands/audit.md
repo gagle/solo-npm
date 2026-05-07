@@ -180,7 +180,9 @@ Action: 2 in Tier 1, 6 in Tier 2.
 
 ### Pre-release awareness
 
-If `npm view <pkg> dist-tags.next` returns a version that differs from `dist-tags.latest` (i.e., a pre-release line is currently active), append below the per-tier tables:
+If `timeout 30 npm view <pkg> dist-tags.next 2>/dev/null` returns a version that differs from `dist-tags.latest` (i.e., a pre-release line is currently active), append below the per-tier tables:
+
+**H4 propagation-lag retry (v0.11.0)**: this `npm view` is read-only but races against recent `/prerelease` PROMOTE runs. Apply the standard 3-attempt retry pattern from `/unpublish` D.1 — if the first read returns empty/error and a `/prerelease` was recently active, retry up to 2 more times with 5s sleep before treating "no @next" as authoritative. False-negatives (missing the @next line because of CDN lag) cause stale-config warnings to silently disappear from the audit report.
 
 > Note: the advisories above apply to all current versions on `@latest` AND `@next`. Resolving them requires fixing the dep on whichever branch each channel publishes from (typically the same branch — main — for both, unless you maintain a separate `next` branch).
 
@@ -221,6 +223,20 @@ Important clarification — "fix" here means **bumping the affected dependency**
 6. **On verify pass**: commits `chore(deps): upgrade tar-fs to 2.1.3 (GHSA-xxxx)`. The dep is upgraded; your own package's version stays unchanged at this point.
 7. **On verify fail**: rolls back via `git checkout package.json pnpm-lock.yaml`; offers debugging via `agent-skills` if installed, or AskUserQuestion (skip dep / skip batch / fix manually / abort).
 
+**H6 chain-failure recovery (v0.11.0)**: if the chained `/solo-npm:deps cve-tier-1` returns a non-zero exit OR explicit STOP signal (lockfile conflict, registry unreachable, peer-dep cascade), capture its output verbatim and surface inside `/audit`'s context:
+
+```
+Header:   "Deps chain stopped"
+Question: "/solo-npm:deps cve-tier-1 stopped: <verbatim child error>. How to proceed?"
+Options:
+  - Retry the chain (fix the root cause first, then retry)
+  - Switch to "Deprecate affected versions" (option 3 of the original gate)
+  - Surface as audit-only (advisories are still in state.json#audit; user fixes manually)
+  - Abort
+```
+
+Don't silently swallow; the audit cache already records the Tier counts so the user has the data, but they need explicit confirmation that the remediation chain didn't complete.
+
 To **ship the fix to your consumers**, run `/release` next — it patch-bumps your own package's version (e.g., `1.5.0 → 1.5.1`), commits, tags, and CI publishes with the upgraded dep included in the new tarball.
 
 The "auto" in "auto-fix" is gated by `/verify`. If your tests fail with the new dep, the upgrade rolls back; nothing ships broken.
@@ -236,6 +252,18 @@ all Tier 1+2 advisories for the affected packages), then invoke
   the fix; or specific versions like `1.4.0 || 1.4.1 || 1.4.2`)
 - `MESSAGE` pre-filled with: *"Vulnerable to <CVE-IDs> — upgrade to
   <fixed-version> or later."*
+
+**H6 chain-failure recovery (v0.11.0)**: if `/solo-npm:deprecate` STOPs (empty matching range — e.g., no published versions match the derived vulnerable range; message > 1024 chars; auth failure), capture its output and surface in `/audit` context:
+
+```
+Header:   "Deprecate chain stopped"
+Question: "/solo-npm:deprecate stopped: <verbatim child error>. How to proceed?"
+Options:
+  - Adjust the message/range and retry deprecate
+  - Switch to "Fix Tier 1 now" (option 1 of the original gate)
+  - Surface as audit-only (advisories cached; user handles deprecation manually)
+  - Abort
+```
 
 The deprecate skill runs its own Phase B gate so the user can review
 the proposed message and version list before applying.

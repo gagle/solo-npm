@@ -458,6 +458,19 @@ Auto-fix loop:
 4. If `PKG_CHECK_WARN` (warnings only) → log warnings; continue to 1e.
 5. **If secrets detected in Tier 3** → HARD STOP with the verbatim secrets-detection block. Do NOT proceed to commit.
 
+**H6 chain-failure recovery (v0.11.0)**: if `/solo-npm:verify --pkg-check-only` itself errors (publint not installable via dlx, network unreachable, malformed wrapper at `.claude/skills/verify/SKILL.md`, etc.), capture the diagnostic and surface in `/init` context with retry options:
+
+```
+Header:   "Pkg-check chain stopped"
+Question: "/solo-npm:verify --pkg-check-only stopped before producing a result: <verbatim>. How to proceed?"
+Options:
+  - Retry the chain (after fixing the root cause)
+  - Skip pkg-check and continue to 1e (NOT recommended — manifest hasn't been validated)
+  - Abort init (scaffolds are uncommitted; user can decide what to keep)
+```
+
+Don't silently continue past a missing pkg-check — that defeats the validation guarantee 1d was added to provide.
+
 This validation closes the original gap from `docs/npm-coverage.md`: *"/init scaffolds publishConfig but doesn't validate everything"*.
 
 ### 1e. Commit + push (gated)
@@ -592,6 +605,19 @@ Invoke `/solo-npm:trust` to configure OIDC Trusted Publishing for all
 packages. The trust skill is itself a guided wizard — it'll handle
 authentication, dry-run validation, per-package configuration, and
 verification.
+
+**H6 chain-failure recovery (v0.11.0)**: if `/solo-npm:trust` STOPs internally (npm-trust CLI not resolvable, doctor failure, web-2FA timeout during configure step, etc.), capture the diagnostic and surface in `/init` context:
+
+```
+Header:   "Trust chain stopped"
+Question: "/solo-npm:trust stopped: <verbatim child error>. How to proceed?"
+Options:
+  - Retry trust setup (after fixing the root cause)
+  - Skip trust and finish init (NOT recommended — releases will lack OIDC; user can run /solo-npm:trust manually later)
+  - Abort init
+```
+
+If the user picks "Skip", surface a final summary that explicitly notes trust is unconfigured + how to fix later (`/solo-npm:trust`). Don't silently mark init as complete.
 
 If the user already has trust configured for some packages and just
 added new ones, `/solo-npm:trust` filters via `--only-new` so it

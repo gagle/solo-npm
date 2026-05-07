@@ -35,6 +35,16 @@ Examples:
 
 If extraction is ambiguous, pre-fill what's clear and ask the rest. Don't over-extract.
 
+## Phase 0.5 — Prompt-extraction validation (E1 from v0.11.0)
+
+After Phase 0 pre-fills slots, validate against the canonical regex framework in `/unpublish` Phase 0.5. Slots specific to `/hotfix`:
+
+- **`TARGET_MAJOR`** — must be a positive integer (`^[0-9]+$`). Rejects "v1" (with v-prefix), "1.x" (range syntax), "first" (English).
+- **`CHERRY_PICK_SHA`** — git SHA regex `^[a-f0-9]{7,40}$`. Rejects partial typed SHAs that wouldn't match a real commit.
+- **`NEXT_VERSION`** (computed) — re-validate as semver after the patch-bump computation in Phase E.2.
+
+On validation failure, STOP with diagnostic.
+
 ## Phase A — Pre-flight + state detection
 
 1. Working tree clean (`git status --porcelain`); else STOP with the standard "commit or stash first" message.
@@ -74,9 +84,26 @@ If extraction is ambiguous, pre-fill what's clear and ask the rest. Don't over-e
 
 Branch name: `<TARGET_MAJOR>.x` (e.g., `1.x`). Source tag: most recent `v<TARGET_MAJOR>.*` tag.
 
+**Shallow-clone detection (B4, v0.11.0)**: if the repo was cloned with `--depth=N` (common in CI), older tags + their commit history may be missing. `git tag --list` returns local tags only; missing source tag = silent failure when `git checkout -b` later can't find the ref.
+
 ```bash
-git fetch origin
+if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+  echo "ERROR: this is a shallow clone — older release tags + their commit history may be missing."
+  echo "       /solo-npm:hotfix needs the full history to branch from v${TARGET_MAJOR}.* tags."
+  echo
+  echo "Fix:   git fetch --unshallow origin"
+  echo "       Then re-invoke /solo-npm:hotfix."
+  exit 1
+fi
+
+timeout 60 git fetch --tags origin
 SOURCE_TAG=$(git tag --list "v${TARGET_MAJOR}.*" --sort=-v:refname | head -1)
+if [ -z "$SOURCE_TAG" ]; then
+  echo "ERROR: no v${TARGET_MAJOR}.* tags found locally even after 'git fetch --tags'."
+  echo "       Either v${TARGET_MAJOR} was never released, or the fetch failed silently."
+  echo "       Verify: git ls-remote --tags origin | grep 'v${TARGET_MAJOR}\\.'"
+  exit 1
+fi
 
 if git ls-remote --heads --exit-code origin "${TARGET_MAJOR}.x" >/dev/null 2>&1; then
   # Branch exists on remote — continuing maintenance
@@ -113,6 +140,10 @@ Before applying the fix and progressing through Phases D–G, apply the standard
 - **H2 — `.solo-npm/state.json` corruption guard**: state.json reads (e.g., the bundle-size cache write in Phase E.7, or any future hotfix-aware cache lookup) wrap in try/catch. On parse fail surface non-fatal warning, treat as empty cache, continue.
 - **H4 — Registry propagation lag retry**: Phase E.5 verify (`npm view <pkg>@<NEXT_VERSION>` and `npm view <pkg> dist-tags.<target-tag>`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP the hotfix on lag — the publish via CI succeeded, this is verification lag.
 - **H6 — Chain-target failure recovery**: chains into `/init --refresh-yml` (Phase A if release.yml stale), `/release` (Phase F.5 forward-port). Capture child STOP messages verbatim and surface in `/hotfix` context with retry/abort options. For Phase F.5: if the forward-port chain fails after a successful cherry-pick, the cherry-pick is already on main — surface clearly so the user can resume manually.
+
+## Phase D.0a — H5 concurrent-release lock (v0.11.0)
+
+Same per-repo lock pattern as `/solo-npm:release` Phase C.0a (canonical reference). Acquire `.solo-npm/locks/<repo-root>.lock` with stale-PID auto-cleanup before applying the fix. A `/hotfix` race with `/release` on the same repo could otherwise produce duplicate tags or interleaved commits across maintenance branches.
 
 ## Phase D — Apply fix
 
@@ -200,6 +231,11 @@ After approval, apply the canonical git push rejection categorization from `/sol
 ```bash
 git add CHANGELOG.md package.json
 git commit -m "chore: release v${NEXT_VERSION}"
+# Pre-commit hook failure rollback (B3, v0.11.0): if `git commit` fails AND
+# stderr matches "pre-commit hook"/"hook .* failed", surface case-by-case
+# recovery options per /solo-npm:release C.2 canonical (--no-verify bypass,
+# git reset HEAD, fix-and-retry). Working tree is staged-but-uncommitted;
+# never silently continue past hook failure.
 HOTFIX_SHA=$(git rev-parse HEAD)   # captured for Phase F.5 forward-port
 
 # Push the maintenance-branch commit with rejection categorization (non-FF / hook / branch-protection / auth)

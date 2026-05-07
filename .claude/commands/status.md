@@ -178,6 +178,19 @@ For each section: compute freshness (`now - lastScan/lastCheck < ttlDays`) and p
 
 **Optional `--fresh` flag**: if the user invokes `/solo-npm:status --fresh`, skip cache reads and instead invoke `/solo-npm:audit` + `/solo-npm:verify --pkg-check-only` to get live values. This is opt-in because it costs npm calls + runs the pack audit; default behavior stays cached + fast.
 
+**H6 chain-failure recovery on `--fresh` (v0.11.0)**: if either `/audit` or `/verify --pkg-check-only` STOPs internally (audit registry unreachable; verify halts on secrets-detected; etc.), capture the diagnostic and **fall back to rendering the dashboard from existing cache** with a clear note:
+
+```
+NOTE: --fresh requested but the live refresh stopped.
+  /solo-npm:audit   — <verbatim child error>
+  /solo-npm:verify  — <verbatim child error or "ok">
+
+Rendering dashboard from existing cache (last refreshed N days ago).
+Run /solo-npm:audit / /solo-npm:verify directly to investigate the failure.
+```
+
+The dashboard is informational; partial-fresh data plus stale-fallback is more useful than a hard failure that produces no output.
+
 This skill remains **read-only and fast** by default. Only `--fresh` triggers fresh runs.
 
 ### deps.dev signals — fetch + cache (NEW in v0.9.0)

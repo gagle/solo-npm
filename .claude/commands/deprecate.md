@@ -43,6 +43,16 @@ Examples:
 
 If extraction is ambiguous, pre-fill what's clear and ask the rest.
 
+## Phase 0.5 — Prompt-extraction validation (E1, E3 from v0.11.0)
+
+After Phase 0 pre-fills slots, validate against the canonical regex framework in `/unpublish` Phase 0.5. Slots specific to `/deprecate`:
+
+- **`RANGE`** — must satisfy `semver.validRange()` (defer to npm's bundled semver lib). Rejects malformed ranges like `>1.x.x`, `1..2.3`, `<>1.0.0`.
+- **`MESSAGE`** — length validation (≤ 1024 chars per Phase A.5 existing guard).
+- **`SCOPE`** / package name — npm name regex.
+
+On validation failure, STOP with diagnostic.
+
 ## Phase A — Pre-flight + state read
 
 1. **Auth check** (same handoff as `/solo-npm:dist-tag`): `npm whoami`. If not authenticated, surface foolproof `npm login` instructions + AskUserQuestion gate.
@@ -129,6 +139,46 @@ Before destructive `npm deprecate` calls, apply the standard solo-npm error patt
 - **H4 — Registry propagation lag retry**: Phase D verify (`npm view <pkg>@<v> deprecated`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP if still inconsistent — surface non-fatal note: *"Registry not yet reflecting deprecation after 15s — npm CDN may take up to 5 minutes; re-check later with `npm view <pkg>@<v> deprecated`."*
 - **H5 — Concurrent invocation lock**: at Phase C start (per package), acquire `.solo-npm/locks/<sanitized-pkg-name>.lock` with `mkdir -p .solo-npm/locks && [ -f LOCK ] && kill -0 $(cat LOCK) 2>/dev/null && exit 1; echo $$ > LOCK; trap 'rm -f LOCK' EXIT`. Refuse to start if another solo-npm skill holds it; user must wait or `rm` the stale lockfile.
 - **H6 — Chain-target failure recovery**: when this skill is auto-chained from `/release` Phase G, `/audit` Phase 5, or `/unpublish` Gate 1, capture any internal STOP and surface the verbatim diagnostic upward. The parent skill's own H6 handler will offer retry/abort options. Don't silently swallow.
+
+## Phase C.0a — H3 auth-race re-check + H5 lock acquisition (concrete impl)
+
+Phase A.1 ran `npm whoami` minutes ago; the user paused at Phase B's AskUserQuestion gate. Re-verify auth + acquire per-package lock immediately before the first destructive call. Mirrors `/unpublish` Phase C.0.
+
+```bash
+# H3: re-check that the npm session is still valid AND still belongs to the same user
+WHOAMI_AT_PHASE_A="$(cat /tmp/.solo-npm-whoami-deprecate 2>/dev/null)"
+WHOAMI_NOW=$(timeout 30 npm whoami 2>/dev/null)
+if [ -z "$WHOAMI_NOW" ]; then
+  echo "ERROR: npm session expired during Phase B gate (Phase A had: $WHOAMI_AT_PHASE_A)."
+  echo "       Re-authenticate via 'npm login', then re-invoke /solo-npm:deprecate."
+  exit 1
+fi
+if [ "$WHOAMI_NOW" != "$WHOAMI_AT_PHASE_A" ]; then
+  echo "ERROR: npm session changed during Phase B gate."
+  echo "       Phase A: $WHOAMI_AT_PHASE_A    Now: $WHOAMI_NOW"
+  echo "       Re-authenticate as the original user, then re-invoke /solo-npm:deprecate."
+  exit 1
+fi
+
+# H5: per-package lock acquisition with stale-PID auto-cleanup (per /unpublish Phase −1.8)
+for PKG in $TARGET_PACKAGES; do
+  LOCK_FILE=".solo-npm/locks/$(echo "$PKG" | sed 's|/|_|g').lock"
+  if [ -f "$LOCK_FILE" ]; then
+    STALE_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$STALE_PID" ] && kill -0 "$STALE_PID" 2>/dev/null; then
+      echo "ERROR: another solo-npm skill holds $LOCK_FILE (PID $STALE_PID alive)."
+      exit 1
+    fi
+    [ -n "$STALE_PID" ] && echo "WARN: removing stale lockfile $LOCK_FILE (PID $STALE_PID dead)"
+    rm -f "$LOCK_FILE"
+  fi
+  mkdir -p .solo-npm/locks
+  echo $$ > "$LOCK_FILE"
+done
+trap 'for PKG in $TARGET_PACKAGES; do rm -f ".solo-npm/locks/$(echo "$PKG" | sed "s|/|_|g").lock"; done' EXIT
+```
+
+(Phase A.1 should write `WHOAMI_NOW` to `/tmp/.solo-npm-whoami-deprecate` so this re-check has a baseline to compare against.)
 
 ## Phase C — Execute
 

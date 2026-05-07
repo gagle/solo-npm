@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.11.0 — Tier-2 strict-safety hardening pass (universal Phase A + concrete C/H + prompt validation)
+
+Major hardening release — closes ~16 Tier-2 strict-safety gaps surfaced by the post-v0.10.1 audit. No new features, no behavioral changes for the happy path. Substantially better diagnostics, schema resilience, concurrent-safety, and prompt-extraction validation.
+
+### Section A — Universal Phase A pre-flight extensions (extend H7)
+
+- **A1 detached-HEAD detection** in every skill that creates commits/tags. `git status --porcelain` passes on detached HEAD; the previous code would create dangling commits/tags. Detection: `git symbolic-ref -q HEAD`. Canonical in `/unpublish` Phase −1.5.
+- **A2 worktree detection** in every skill that mutates git or scaffolding state. `.solo-npm/` artifacts are tied to the main worktree; running from a `git worktree` produces confusing cache-state mismatches. Canonical in `/unpublish` Phase −1.6.
+- **A3 `gh` Phase A pre-flight** hoisted from per-call detection. Every skill using `gh` (release, prerelease, hotfix, status, unpublish) now reports up-front: `gh: ready (vX.Y.Z)` / `gh: installed but not authenticated` / `gh: not installed`. Skills gracefully skip gh-dependent steps with a clear "what was skipped and why" note instead of failing mid-flow.
+
+### Section B — Skill-specific surgical fixes
+
+- **B1 `gh run watch` 30min timeout cap** in `/release` C.6, `/prerelease` C.6 (already in `/hotfix` E.4 from v0.10.1). Surfaces clear "CI may still be running" message on timeout instead of an indefinite hang.
+- **B2 `git stash pop` conflict recovery** in `/deps` Phase 4d (rollback path). When the stash pop fails with merge conflicts, surface the conflicted files + recovery options (resolve-then-drop / discard / re-apply later). Previously left the stash silently on the stack.
+- **B3 pre-commit hook failure rollback** in `/release` C.2, `/prerelease` C.2, `/hotfix` E.4, `/deps` Phase 4e. Detects hook rejection vs other commit failures; surfaces the hook output + recovery options including `--no-verify` bypass and `git reset HEAD` to roll back staging.
+- **B4 `git fetch` shallow detection** in `/hotfix` Phase B. CI clones with `--depth=N` were silently producing missing-source-tag failures; now detects via `git rev-parse --is-shallow-repository` and surfaces `git fetch --unshallow origin` as the fix.
+- **B5 GitHub Release create failure → warn, not block** in `/release` C.7.5. The npm publish already succeeded; the release page is a secondary artifact. Demoted to warning + manual remediation snippet (`gh release create v$V --notes-from-tag`). User can re-run later without re-publishing.
+- **B6 `npm pack --dry-run` JSON schema validation** in `/verify` Tier 3. Defensive parsing of `unpackedSize`, `entryCount`, `files[]` — falls back to file-size-sum if `unpackedSize` is missing (npm 7 omits it). Hard warning if `files[]` itself is empty.
+
+### Section C — Actual H3/H4/H5/H6 implementations (the v0.10.0 reference text was skeletal)
+
+- **C1 H3 auth-race re-check (concrete impl)** in `/deprecate` Phase C.0a, `/dist-tag` Phase C.0a, `/owner` Phase C.0a. Re-runs `npm whoami` immediately before the first destructive call; STOPs if session expired or user changed during the AskUserQuestion gate at Phase B. Matches the canonical `/unpublish` Phase C.0 implementation.
+- **C2 H4 retry implementation** in `/audit` Phase 5 (`npm view <pkg> dist-tags.next` for stale-@next note). 3-attempt × 5s retry against propagation lag.
+- **C3 H5 concurrent-release lock** in `/release` Phase C.0a, `/hotfix` Phase D.0a, `/prerelease` Phase C.0a. Per-repo lock at `.solo-npm/locks/<repo-root-hash>.lock` with stale-PID auto-cleanup. Two parallel releases on the same repo would otherwise race the git tag and double-publish.
+- **C4 H6 chain-failure handling (concrete impl)** in `/audit` Phase 5 (chains to `/deps`, `/deprecate`); `/status` `--fresh` flag; `/init` Phase 1d (chain to `/verify --pkg-check-only`); `/init` Phase 3 (chain to `/trust`). Captures child-skill STOP messages verbatim and surfaces them in the parent context with retry/abort/fall-back-to-cache options instead of silently swallowing.
+
+### Section D — Schema resilience (extend H2)
+
+- **D1 state.json schema preservation on writes**. Every write reads + mutates only the relevant keys + writes back the entire object. Forward-compatible: a v0.11.0 skill running against a v0.12.0-shaped cache won't truncate fields it doesn't understand. Canonical in `/unpublish` Phase −1.4.
+- **D2 `npm view` defensive schema parsing** for cross-npm-version compatibility. `dist.attestations` may be missing on private registries; `time.<v>` format varies (ISO-8601 vs Unix epoch ms). Documented fallbacks per field. Canonical in `/unpublish` Phase −1.4b.
+- **D3 `npm-trust` npx pin** in `/trust` Pre-flight. Replaces `npm-trust@latest` (could fetch any future version) with `npm-trust@^0.4` (pinned major). Bumped explicitly when solo-npm is tested against a newer npm-trust major.
+- **D4 `npm pack --dry-run` defensive parsing** in `/verify` Tier 3, `/release` C.7.6 bundle-size cache. Fallback: if `unpackedSize` is missing, sum `files[].size` manually.
+
+### Section E — AI-prompt regex validation framework
+
+- **E1 semver regex validation** in Phase 0.5 of `/unpublish` (canonical), `/release`, `/prerelease`, `/hotfix`, `/dist-tag`, `/deprecate`. Rejects malformed extracted versions BEFORE Phase B's plan rendering. Canonical regex framework documented once in `/unpublish` Phase 0.5; siblings reference it and apply only the slots they extract.
+- **E2 identifier whitelist validation** in `/prerelease` Phase 0.5. Rejects typos like "alpa", "betta" with a "did you mean" hint. Whitelist: alpha, beta, rc, canary, experimental, next, preview, edge.
+- **E3 scope/name regex validation** across all Phase 0 extractions. npm naming rules enforced at the boundary: `^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$`. Rejects shell-metacharacter-laden names that could cause confused execution.
+
+### Why minor (not patch)
+
+The Section A and D extensions add new universal pre-flight checks that some users will see as new STOPs (detached HEAD, worktree, missing gitconfig), even though those STOPs were always-correct safety refusals just not previously surfaced. Following conventional commits → minor bump.
+
+### Upgrading
+
+`/reload-plugins` after marketplace update. No state.json migration needed; D1 schema preservation makes the cache forward-compatible automatically. If you've been running solo-npm in a `git worktree` (uncommon), v0.11.0 will surface a STOP — switch to the main working directory or wait for v0.11.1 if worktree support becomes a real ask.
+
 ## v0.10.1 — strict-safety hardening pass (H7 + tag/push categorization + curl timeouts)
 
 Patch release that closes the 9 Tier-1 strict-safety gaps surfaced by a follow-up cross-skill audit on every external-tool invocation. No new features; no behavioral changes for the happy path; substantially better diagnostics + remediation when something goes wrong.

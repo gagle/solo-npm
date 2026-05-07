@@ -51,6 +51,16 @@ Examples:
 
 If extraction is ambiguous, pre-fill what's clear and AskUserQuestion for the rest. Don't over-extract.
 
+## Phase 0.5 — Prompt-extraction validation (E1, E3 from v0.11.0)
+
+After Phase 0 pre-fills slots, validate against the canonical regex framework in `/unpublish` Phase 0.5. Slots specific to `/dist-tag`:
+
+- **`TAG`** — dist-tag regex `^[a-z][a-z0-9-]*$`. Rejects "Latest" (uppercase), "@latest" (with @ prefix), "v1" (numeric leading char).
+- **`VERSION`** (for `add`/`repoint`) — semver regex.
+- **`SCOPE` / package name** — npm name regex.
+
+On validation failure, STOP with diagnostic.
+
 ## Phase A — Pre-flight + state read
 
 1. **Auth check**: run `npm whoami`. If exit code != 0 (not authenticated), surface foolproof handoff:
@@ -147,6 +157,39 @@ Before destructive `npm dist-tag` calls, apply the standard solo-npm error patte
 - **H4 — Registry propagation lag retry**: Phase D verify (`npm view <pkg> dist-tags --json`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP if still inconsistent — surface non-fatal note: *"Registry not yet reflecting dist-tag mutation after 15s — npm CDN may take up to 5 minutes; re-check later with `npm view <pkg> dist-tags`."*
 - **H5 — Concurrent invocation lock**: at Phase C start (per package), acquire `.solo-npm/locks/<sanitized-pkg-name>.lock` (PID file with `trap` cleanup). Refuse to start if another solo-npm skill holds it.
 - **H6 — Chain-target failure recovery**: when auto-chained from `/status` (stale-`@next` warning) or `/prerelease` PROMOTE Phase E, capture any internal STOP and surface upward to the parent skill's H6 handler. Don't silently swallow.
+
+## Phase C.0a — H3 auth-race re-check + H5 lock acquisition (concrete impl)
+
+Mirrors `/solo-npm:deprecate` Phase C.0a (canonical wording). Phase A.1 ran `npm whoami` and stashed the result; this re-check fires immediately before the first destructive call.
+
+```bash
+# H3: re-check npm session is still valid AND still same user
+WHOAMI_AT_PHASE_A="$(cat /tmp/.solo-npm-whoami-dist-tag 2>/dev/null)"
+WHOAMI_NOW=$(timeout 30 npm whoami 2>/dev/null)
+if [ -z "$WHOAMI_NOW" ] || [ "$WHOAMI_NOW" != "$WHOAMI_AT_PHASE_A" ]; then
+  echo "ERROR: npm session expired or changed during Phase B gate."
+  echo "       Phase A: $WHOAMI_AT_PHASE_A    Now: ${WHOAMI_NOW:-<no session>}"
+  echo "       Re-authenticate, then re-invoke /solo-npm:dist-tag."
+  exit 1
+fi
+
+# H5: per-package lock with stale-PID auto-cleanup (per /unpublish Phase −1.8)
+for PKG in $TARGET_PACKAGES; do
+  LOCK_FILE=".solo-npm/locks/$(echo "$PKG" | sed 's|/|_|g').lock"
+  if [ -f "$LOCK_FILE" ]; then
+    STALE_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$STALE_PID" ] && kill -0 "$STALE_PID" 2>/dev/null; then
+      echo "ERROR: another solo-npm skill holds $LOCK_FILE (PID $STALE_PID alive)."
+      exit 1
+    fi
+    [ -n "$STALE_PID" ] && echo "WARN: removing stale lockfile $LOCK_FILE (PID $STALE_PID dead)"
+    rm -f "$LOCK_FILE"
+  fi
+  mkdir -p .solo-npm/locks
+  echo $$ > "$LOCK_FILE"
+done
+trap 'for PKG in $TARGET_PACKAGES; do rm -f ".solo-npm/locks/$(echo "$PKG" | sed "s|/|_|g").lock"; done' EXIT
+```
 
 ## Phase C — Execute
 

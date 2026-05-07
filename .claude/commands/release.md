@@ -95,6 +95,15 @@ If a wrapper at `.claude/skills/release/SKILL.md` provides explicit
 overrides (e.g., "the publish workflow is `release-monorepo.yml`"), use
 those values instead of auto-detection.
 
+## Phase 0.5 — Prompt-extraction validation (E1, E3 from v0.11.0)
+
+After Phase 0 pre-fills slots, validate every extracted value against the canonical regex framework in `/unpublish` Phase 0.5 (canonical reference). For `/release`, the slots needing validation are:
+
+- **`NEXT_VERSION` / version override** — semver regex `^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+)?$`. Reject pre-fills like `v999.999.999` (typos, non-semver) BEFORE Phase B's plan rendering.
+- **Package name** in monorepo scope — npm name regex `^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$`. Reject if Phase 0 extracted a package name with shell metacharacters.
+
+On validation failure, STOP with the diagnostic from `/unpublish` Phase 0.5 (slot + value + expected format).
+
 ## Phase A — Pre-flight
 
 ### A.1 Working tree must be clean
@@ -336,6 +345,29 @@ Before kicking off the execute steps, apply the standard solo-npm error patterns
 - **H4 — Registry propagation lag retry**: Phase C.7 verify (`npm view <pkg>@<v>` post-publish, `npm view <pkg> dist-tags`) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP the release on lag — surface non-fatal note: *"Registry not yet reflecting publish after 15s — npm CDN may take up to 5 minutes; tag is on origin and CI succeeded, so this is verification lag, not a publish failure."*
 - **H6 — Chain-target failure recovery**: chains into `/verify` (A.2, C.4), `/init` (A.3 WORKFLOWS_NONE auto-fix), `/trust` (A.3 delta), `/audit` (A.5 cached check), `/deprecate` (Phase G) — when any chain target STOPs, capture its verbatim diagnostic and surface in `/release` context with options: retry the chain / abort / skip-and-continue (where safe). Don't silently swallow.
 
+## Phase C.0a — H5 concurrent-release lock (v0.11.0)
+
+Two parallel `/release` runs on the same repo race the git tag and can double-publish. Acquire a per-repo lock immediately at Phase C start, before any git/npm mutation. Mirrors `/unpublish` Phase −1.8 (canonical) with a per-repo (not per-package) key since `/release` operates on the whole repo:
+
+```bash
+REPO_LOCK=".solo-npm/locks/$(git rev-parse --show-toplevel | sed 's|/|_|g').lock"
+if [ -f "$REPO_LOCK" ]; then
+  STALE_PID=$(cat "$REPO_LOCK" 2>/dev/null)
+  if [ -n "$STALE_PID" ] && kill -0 "$STALE_PID" 2>/dev/null; then
+    echo "ERROR: another solo-npm release is in flight on this repo (PID $STALE_PID)."
+    echo "       Wait for it to finish, or kill PID $STALE_PID if hung."
+    exit 1
+  fi
+  [ -n "$STALE_PID" ] && echo "WARN: removing stale repo lockfile $REPO_LOCK (PID $STALE_PID dead)"
+  rm -f "$REPO_LOCK"
+fi
+mkdir -p .solo-npm/locks
+echo $$ > "$REPO_LOCK"
+trap 'rm -f "$REPO_LOCK"' EXIT
+```
+
+This complements (does NOT replace) the per-package locks acquired by `/deprecate`/`/dist-tag`/`/owner`/`/unpublish` — `/release` is one-repo-at-a-time but multi-package operations remain free to run concurrently.
+
 ## Phase C — Execute
 
 After approval at B.5, run all of the following without further user
@@ -348,12 +380,38 @@ interaction. Halt on the first failure.
 3. **(Monorepo only)** Update each `packages/*/package.json#version` to
    `NEXT_VERSION`.
 
-### C.2 Commit
+### C.2 Commit — with pre-commit hook failure rollback (v0.11.0)
 
 ```bash
 git add CHANGELOG.md package.json
 # (Monorepo: also `git add packages/*/package.json`)
-git commit -m "chore: release v${NEXT_VERSION}"
+
+COMMIT_OUT=$(git commit -m "chore: release v${NEXT_VERSION}" 2>&1)
+COMMIT_RC=$?
+if [ $COMMIT_RC -ne 0 ]; then
+  # Detect pre-commit hook rejection (vs other commit failures)
+  if echo "$COMMIT_OUT" | grep -qiE "pre-commit hook|hook .* failed|hook declined"; then
+    echo "ERROR: pre-commit hook blocked the release commit."
+    echo "Hook output:"
+    echo "$COMMIT_OUT" | sed 's/^/  /'
+    echo
+    echo "Working tree state: files are STAGED but NOT committed."
+    echo
+    echo "Recovery options:"
+    echo "  a) Address the hook complaint (e.g., format/lint), then re-run /solo-npm:release."
+    echo "     The skill is idempotent — it'll detect the un-committed CHANGELOG/package.json"
+    echo "     and resume from C.2."
+    echo "  b) Bypass the hook (emergency only): git commit --no-verify -m 'chore: release v${NEXT_VERSION}'"
+    echo "     Then re-run /solo-npm:release to resume from C.3."
+    echo "  c) Reset the staging area entirely: git reset HEAD -- CHANGELOG.md package.json"
+    echo "     This rolls back C.1's CHANGELOG/version mutations to the staging area."
+    exit 1
+  fi
+  # Other commit failures (rare — empty commit, etc.)
+  echo "ERROR: git commit failed (exit $COMMIT_RC):"
+  echo "$COMMIT_OUT" | sed 's/^/  /'
+  exit 1
+fi
 ```
 
 ### C.3 Push (commit only, no tag yet) — with rejection categorization
@@ -459,16 +517,29 @@ fi
 
 This triggers the publish workflow on the new tag.
 
-### C.6 Watch CI
+### C.6 Watch CI (with timeout cap, v0.11.0)
+
+Skip this step entirely if `GH_AVAILABLE=0` (per Phase A.0 detection): surface "skipping CI watch — gh unavailable; check the workflow run manually at <repo-url>/actions" and continue to C.7.
 
 ```bash
-gh run watch --exit-status
+timeout 1800 gh run watch --exit-status
 ```
+
+`timeout 1800` (30min) bounds the wait against indefinite-hang scenarios (long CI, cancelled run that gh doesn't notice, network drop). gh's own default is also 30min but the explicit `timeout` makes the cap explicit + ours-not-gh's, and the surrounding error message becomes consistent regardless of how the timeout fires.
 
 If CI fails, **STOP** and surface the error. The tag is on origin
 (intentional record of intent); recovery is `gh run rerun <id>` after
 fixing the cause. **Do not** bump the version unless the tarball needs
 new content.
+
+If the timeout fires (CI exceeded 30min), surface clearly:
+
+```
+WARN: gh run watch timed out after 30 minutes.
+      The workflow may still be running — check at <repo-url>/actions
+      Once CI completes, re-run /solo-npm:release to resume from C.7 verification.
+      The release tag is already on origin; CI will continue independently.
+```
 
 **On CI success: refresh the trust-state cache.** A successful CI
 publish via OIDC is proof that trust still works for every package
@@ -557,13 +628,40 @@ NOTES=$(awk -v v="${NEXT_VERSION}" '
   capture { print }
 ' CHANGELOG.md)
 
-# Create the GitHub Release:
-gh release create "v${NEXT_VERSION}" \
+# Create the GitHub Release — warn-don't-fail on error (B5, v0.11.0)
+RELEASE_OUT=$(timeout 30 gh release create "v${NEXT_VERSION}" \
   --title "v${NEXT_VERSION}" \
-  --notes "${NOTES}"
+  --notes "${NOTES}" 2>&1)
+RELEASE_RC=$?
+if [ $RELEASE_RC -ne 0 ]; then
+  case "$RELEASE_OUT" in
+    *"already exists"*)
+      echo "WARN: GitHub Release v${NEXT_VERSION} already exists (someone created it manually or a prior /release made it)."
+      echo "      The npm publish succeeded; release page is just an artifact. No action needed."
+      ;;
+    *"403"*|*"Permission denied"*|*"not authorized"*)
+      echo "WARN: gh release create failed (auth/permission): $RELEASE_OUT"
+      echo "      The npm publish succeeded; create the release page manually:"
+      echo "      gh auth refresh -s repo && gh release create v${NEXT_VERSION} --notes-from-tag"
+      ;;
+    *"422"*|*"unprocessable"*)
+      echo "WARN: gh release create rejected the request: $RELEASE_OUT"
+      echo "      The npm publish succeeded. Investigate via: gh release view v${NEXT_VERSION}"
+      ;;
+    *)
+      echo "WARN: gh release create failed (exit $RELEASE_RC):"
+      echo "$RELEASE_OUT" | sed 's/^/  /'
+      echo "      The npm publish succeeded; the release page is secondary. Retry manually:"
+      echo "      gh release create v${NEXT_VERSION} --notes-from-tag"
+      ;;
+  esac
+  # Don't exit non-zero — npm publish already happened. Continue to C.7.6.
+fi
 ```
 
 The CHANGELOG extractor strips the version header line itself (the `gh release create --title` covers that) and stops at the next `## v...` header. If extraction returns empty (e.g., CHANGELOG format drift), fall back to passing the version-only title with no body and surface a warning.
+
+**B5 rationale (v0.11.0)**: previously, `gh release create` failure halted the release. But the npm publish already succeeded — the release page is a secondary artifact. Demoting to warn-don't-fail means the user can manually create the release later (`gh release create v$V --notes-from-tag`) without re-publishing or rolling back.
 
 ### C.7.6 Update bundle-size baseline cache
 

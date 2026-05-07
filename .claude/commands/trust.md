@@ -37,11 +37,12 @@ invocation in every step below. Try in this order and stop at the first match:
    ```
 4. **Registry fetch (last resort).** Otherwise fall back to:
    ```
-   <CLI> = npx -y npm-trust@latest
+   <CLI> = npx -y npm-trust@^0.4
    ```
+   **Pinned to major 0.4** (D3 from v0.11.0 strict-safety pass). The skill body assumes `--auto`, `--doctor`, and `--json` flags as introduced/finalized in npm-trust 0.4.x. Using `@latest` would fetch whatever is current on npm and could silently regress flag availability. Bump this pin explicitly when solo-npm is tested against a newer npm-trust major.
 
 If your shell's `npx` form rejects the package (some npm 11 setups require
-`npm exec --` instead), substitute `npm exec -- npm-trust@latest` for
+`npm exec --` instead), substitute `npm exec -- npm-trust@^0.4` for
 the npx fallback.
 
 Use the chosen invocation in **every** subsequent step. Below, `<CLI>` is the
@@ -57,7 +58,7 @@ placeholder — replace mentally.
 
 If the result is `TOO_OLD`, the resolved binary predates `--auto` (added in
 v0.2.0). **Stop** and ask the user to upgrade with
-`npm i -g npm-trust@latest` (or remove the cached version that resolved).
+`npm i -g npm-trust@^0.4` (or remove the cached version that resolved).
 
 ## Phase 1 — Discover (one call when --doctor is supported)
 

@@ -48,6 +48,16 @@ Examples:
 
 If extraction is ambiguous (user said "alpha" but mentioned no base), pre-fill what's clear and ask the rest. Never over-extract.
 
+## Phase 0.5 — Prompt-extraction validation (E1, E2 from v0.11.0)
+
+After Phase 0 pre-fills slots, validate against the canonical regex framework in `/unpublish` Phase 0.5. Slots specific to `/prerelease`:
+
+- **`IDENTIFIER`** (alpha/beta/rc/canary/experimental) — whitelist regex `^(alpha|beta|rc|canary|experimental|next|preview|edge)$`. Typos like "alpa", "betta" are rejected with: *"IDENTIFIER='alpa' is not a recognized pre-release identifier. Did you mean 'alpha'? Valid: alpha, beta, rc, canary, experimental, next, preview, edge."*
+- **`NEXT_VERSION`** override — semver regex per `/unpublish` canonical.
+- **Base bump in "Other" path** — semver validation on user-typed override.
+
+On validation failure, STOP with diagnostic naming the slot + offending value + expected format.
+
 ## Phase A — Pre-flight + state detection
 
 1. Working tree clean (`git status --porcelain`); else STOP with the standard "commit or stash first" message.
@@ -121,6 +131,10 @@ Before the execute steps, apply the standard solo-npm error patterns. Canonical 
 - **H4 — Registry propagation lag retry**: Phase C.7 verify (`npm view <pkg> dist-tags.next` etc.) uses 3 attempts × 5s sleep before declaring inconsistency. Don't HARD STOP — surface non-fatal note about CDN lag and continue to summary.
 - **H6 — Chain-target failure recovery**: chains into `/verify` (Phase C.4) and `/dist-tag cleanup-stale` (Phase E PROMOTE). Capture child STOP messages verbatim and surface in `/prerelease` context with retry/abort options.
 
+## Phase C.0a — H5 concurrent-release lock (v0.11.0)
+
+Same per-repo lock pattern as `/solo-npm:release` Phase C.0a (canonical reference). Acquire `.solo-npm/locks/<repo-root>.lock` with stale-PID auto-cleanup before any git/npm mutation. Two parallel `/prerelease` runs (or a `/release` racing a `/prerelease`) on the same repo would otherwise double-tag and double-publish.
+
 ## Phase C — Execute
 
 After approval, run all of the following without further user interaction. Halt on first failure.
@@ -170,6 +184,8 @@ git add CHANGELOG.md package.json
 git commit -m "chore: release v${NEXT_VERSION}"
 ```
 
+**Pre-commit hook failure rollback (B3, v0.11.0)**: apply the same case-detection and recovery options as `/solo-npm:release` C.2 (canonical wording) — hook-rejection vs other commit failure, recovery options including `--no-verify` bypass and `git reset HEAD` to roll back staging.
+
 ### C.3 Push (commit only) — with rejection categorization
 
 Apply the same git-push-rejection categorization as `/solo-npm:release` C.3 (canonical reference). Capture stderr, switch on common rejection patterns (non-fast-forward, server-side hook, branch protection, auth fail), and surface the matching remediation. Wrap with `timeout 60` to avoid indefinite hangs on stalled remotes. On any failure, halt before tagging.
@@ -186,13 +202,15 @@ Apply the same tag-collision pre-flight as `/solo-npm:release` C.5 (canonical re
 2. Only then `git tag "v${NEXT_VERSION}"` locally.
 3. `timeout 60 git push --tags` with the same rejection categorization as C.3. On failure: clean up the local tag (`git tag -d`) so the next attempt can re-tag.
 
-### C.6 Watch CI
+### C.6 Watch CI (with timeout cap, v0.11.0)
+
+Skip if `GH_AVAILABLE=0` (per Phase A.0). Otherwise:
 
 ```bash
-gh run watch --exit-status
+timeout 1800 gh run watch --exit-status
 ```
 
-If CI fails, STOP and surface the error.
+Same 30min cap and timeout-warning behavior as `/solo-npm:release` C.6 (canonical reference). On CI failure: STOP + surface verbatim error. On timeout: surface workflow URL and resume hint.
 
 ### C.7 Verify on the registry
 

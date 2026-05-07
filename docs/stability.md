@@ -61,7 +61,7 @@ These are explicit non-promises so consumers don't accidentally depend on them:
 
 ## What needs to land before v1.0.0
 
-The pre-v1.0.0 punch list (status as of v0.10.0):
+The pre-v1.0.0 punch list (status as of v0.11.0):
 
 | Item | Status | Where |
 |---|---|---|
@@ -78,11 +78,31 @@ The pre-v1.0.0 punch list (status as of v0.10.0):
 | **Cross-skill systemic error-handling hardening** (H1 OTP, H2 cache corruption, H3 auth-window race, H4 registry propagation, H5 concurrent locking, H6 chain-target failure) | ✓ shipped v0.10.0 | All 12 skills; canonical patterns in unpublish.md Phases C.0–D.2; references in 11 sibling skills |
 | **Auto-cleanup gate for git tags + GitHub Releases** post-unpublish | ✓ shipped v0.10.0 | unpublish.md Phase D.3 |
 | **`/verify` post-publish secrets remediation note** | ✓ shipped v0.10.0 | verify.md Tier 3 |
+| **Tier-1 strict-safety hardening** (H7 universal pattern; tag-collision pre-flight; git-push categorization; curl timeouts; stale-lock auto-cleanup; atomic state.json writes; stderr redirect) | ✓ shipped v0.10.1 | Canonical in unpublish.md Phase −1; surgical fixes in release/prerelease/hotfix |
+| **Tier-2 strict-safety hardening — Section A** (universal Phase A: detached HEAD detection, worktree detection, gh pre-flight) | ✓ shipped v0.11.0 | Canonical in unpublish.md Phases −1.5/−1.6/−1.7 |
+| **Tier-2 strict-safety hardening — Section B** (gh-run-watch timeout, stash-pop conflict recovery, pre-commit hook rollback, fetch-shallow detection, gh-release-create warn-not-block, npm-pack defensive parsing) | ✓ shipped v0.11.0 | Surgical fixes in release/prerelease/hotfix/deps/verify |
+| **Tier-2 strict-safety hardening — Section C** (concrete H3 in deprecate/dist-tag/owner; H4 retry in audit; H5 lock in release/hotfix/prerelease; H6 chain-failure in audit/status/init) | ✓ shipped v0.11.0 | All affected skills |
+| **Tier-2 strict-safety hardening — Section D** (state.json schema preservation; npm view defensive parsing; npm-trust npx pin; npm pack defensive parsing) | ✓ shipped v0.11.0 | Canonical extends in unpublish.md Phase −1.4; D3 in trust.md |
+| **Tier-2 strict-safety hardening — Section E** (semver/identifier/scope regex validation in Phase 0.5) | ✓ shipped v0.11.0 | Canonical in unpublish.md Phase 0.5; reference in 5 sibling skills |
 | **Demo / showcase repo** (`solo-npm-example`) | open | not yet started |
 | **Wider adoption signal** — at least one external user beyond rfc-bcp47/ncbijs | open | depends on outreach |
 | **Skill-spec drift caught at least once via the regression checklist** before being noticed in production | open | requires release cycles |
 
-The first 13 items are landed (v0.10.0 closed four major ones in a single release). The remaining 3 are external/temporal — they need real-world usage to validate that the API holds up. **v1.0.0 won't ship until those are met.**
+The first 18 items are landed (v0.11.0 closed Sections A–E from the Tier-2 audit in a single release). The remaining 3 are external/temporal — they need real-world usage to validate that the API holds up. **v1.0.0 won't ship until those are met.**
+
+### Tier-3 items still deferred (post-v1.0.0 polish)
+
+These remain explicit non-goals or low-priority backlog items even after v1.0.0:
+
+- Rate-limit backoff (exponential 1s/2s/4s) for portfolio operations >30 packages
+- SSL cert error handling for corporate-proxy MITM cert chains
+- SIGINT/Ctrl+C signal handling cleanup beyond the existing trap-on-EXIT
+- Environment-variable validation (`$HOME`, `$TMPDIR`, `$PATH`)
+- `.npmrc` ad-hoc parsing replacement (use `npm config get` API)
+- Conventional-commits strictness (subject length, scope whitelist)
+- npm CLI major-version full backward-compat layer (D2 covers high-impact cases; full BCL is over-engineering)
+- Workspace symlink edge cases for monorepos (delegated to package manager)
+- `gh` GraphQL implementation for >30-package portfolios (currently documented in /status, not implemented)
 
 ### v0.10.0 hardening summary
 

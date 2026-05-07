@@ -335,6 +335,67 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Verify**: this is the load-bearing test for the wrong-name fast-cleanup happy path. If S17 fails (skill HARD STOPs on 404), `/unpublish` is broken for the exact use case it was designed to handle.
 
+### S18 — Detached-HEAD STOP (v0.11.0 A1)
+
+**Setup**: any solo-npm-managed repo. Detach HEAD: `git checkout HEAD~1` (or any specific SHA without `-b`).
+
+**Trigger**: `/solo-npm:release` (or any commit/tag-creating skill).
+
+**Expected**: Phase A.1 detects `! git symbolic-ref -q HEAD` and HARD STOPs with: *"detached HEAD detected (currently at <SHA>). Commits or tags created here would become unreachable when you next checkout a branch. Fix: git checkout main, then re-invoke."*
+
+**Verify**: no commits or tags were created. Working tree unchanged.
+
+### S19 — Worktree STOP (v0.11.0 A2)
+
+**Setup**: `git worktree add ../solo-npm-tmp main` and `cd` into the new worktree.
+
+**Trigger**: `/solo-npm:release` or `/solo-npm:init`.
+
+**Expected**: Phase A detects worktree state (`git rev-parse --git-path HEAD` resolves outside `.git/HEAD`) and HARD STOPs with: *"detected git worktree (not the main working directory). solo-npm skills assume the main worktree because .solo-npm/ artifacts and package.json scaffolding decisions are tied to it. Fix: cd $(git worktree list | head -1)."*
+
+**Verify**: no scaffolding written; no commits; main worktree's state.json untouched.
+
+### S20 — git stash pop conflict in /deps rollback (v0.11.0 B2)
+
+**Setup**: contrived. Force a state where `/deps`'s rollback `git stash pop` will conflict — e.g., manually run `git stash` after Phase 4a's snapshot but before its pop completes, then trigger a verify failure.
+
+**Trigger**: `/deps cve-tier-1` against a repo where the test suite will fail post-upgrade.
+
+**Expected**: when the per-batch `/verify` fails and Phase 4d rolls back, `git stash pop` hits a merge conflict. The skill detects the conflict (stderr matches `conflict|CONFLICT|merge`), surfaces conflicted files via `git diff --name-only --diff-filter=U`, and presents three recovery options (resolve-then-drop / discard / re-apply on clean tree).
+
+**Verify**: stash is still on the stack (`git stash list` shows it); no further automatic action was taken; user is unblocked because they got a concrete path forward.
+
+### S21 — Pre-commit hook rollback in /release (v0.11.0 B3)
+
+**Setup**: install a `.git/hooks/pre-commit` that exits non-zero (e.g., always-fails or a real lint hook with violations in CHANGELOG.md).
+
+**Trigger**: `/solo-npm:release`.
+
+**Expected**: Phase C.2 detects the hook rejection (stderr matches `pre-commit hook|hook .* failed|hook declined`), surfaces the hook output verbatim, AND presents three recovery options:
+- (a) Address the hook complaint + re-run /release (idempotent)
+- (b) Bypass via `git commit --no-verify -m '...'` then resume
+- (c) Reset staging via `git reset HEAD -- CHANGELOG.md package.json`
+
+**Verify**: no commit was made; staging area still contains the CHANGELOG/package.json mutations from C.1; user can pick a clear path forward.
+
+### S22 — Concurrent /release lock refusal (v0.11.0 C3)
+
+**Setup**: in terminal A, start `/solo-npm:release` and pause it at Phase B's plan-approval gate (don't pick Proceed yet). In terminal B (same repo cwd), invoke `/solo-npm:release`.
+
+**Expected**: terminal A holds `.solo-npm/locks/<repo-root>.lock` after passing Phase C.0a (this requires terminal A to have approved Phase B already; for the actual race, simulate by manually creating the lockfile with terminal A's PID). Terminal B reaches Phase C.0a and detects the live lock holder, halting cleanly with: *"another solo-npm release is in flight on this repo (PID <pid>). Wait for it to finish, or kill PID <pid> if hung."*
+
+**Verify**: terminal A completes successfully. Terminal B never executed C.1 onwards. After A finishes, the lock file is gone (trap cleanup); B can be re-run.
+
+### S23 — IDENTIFIER typo rejected in /prerelease (v0.11.0 E2)
+
+**Setup**: any repo with a stable version on `@latest`.
+
+**Trigger**: *"start an alpa pre-release line for v2"* (typo: "alpa" instead of "alpha").
+
+**Expected**: Phase 0 extracts `IDENTIFIER=alpa`. Phase 0.5 validation regex `^(alpha|beta|rc|canary|experimental|next|preview|edge)$` rejects it. Skill HARD STOPs with: *"IDENTIFIER='alpa' is not a recognized pre-release identifier. Did you mean 'alpha'? Valid: alpha, beta, rc, canary, experimental, next, preview, edge."*
+
+**Verify**: no `npm version` call; no commits; no tags. The user gets a clear "did you mean" hint and can re-invoke with the correct identifier.
+
 ## Drift indicators to watch
 
 When walking through these scenarios, **suspect drift** if you see:

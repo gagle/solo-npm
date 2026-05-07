@@ -124,7 +124,160 @@ fs.renameSync(tmp, '.solo-npm/state.json');
 
 If the process is killed between writeFile and rename, the leftover `.tmp` file is detected on next read (H2 corruption guard already wraps `JSON.parse` in try/catch — the `.tmp` file is harmless because it's not the real state file).
 
-### −1.5 Stale-lock auto-cleanup (extends H5)
+**Schema preservation on writes (D1, v0.11.0)**: every `state.json` write uses **read-modify-write** — the entire object is read in, the relevant section mutated, the entire object written back. Never replace a top-level section with `state.section = newValue` (that would silently drop any unknown keys a future schema added). Pattern:
+
+```javascript
+const state = JSON.parse(fs.readFileSync(path, 'utf8'));
+// Mutate ONLY the keys you intend to update; leave everything else untouched
+state.audit = state.audit || {};
+state.audit.tier1Count = newCount;
+state.audit.lastFullScan = new Date().toISOString();
+// Other state.audit.* fields (e.g., a future `state.audit.scoreCard`) are preserved.
+// Atomic write
+const tmp = path + '.tmp';
+fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+fs.renameSync(tmp, path);
+```
+
+This makes `state.json` forward-compatible: an older skill version reads + preserves fields it doesn't understand, instead of truncating them. A user mixing skill versions across repos (or mid-upgrade) gets non-destructive behavior.
+
+### −1.4b `npm view` defensive schema parsing (D2)
+
+`npm view <pkg> --json` output schema varies subtly across npm 7/8/9/10 and across registry hosts. Specifically:
+
+| Field | Variability |
+|---|---|
+| `dist.attestations` | Missing entirely on private registries that don't support provenance; missing on packages predating Sigstore |
+| `time.<version>` | npm 7/8 returns ISO-8601 (`"2024-03-15T12:34:56.789Z"`); some private registries return Unix epoch as a number |
+| `time.modified`, `time.created` | Always present, but format same as above |
+| `dist-tags` | Always object, but may be empty `{}` (no tags) on never-published packages |
+| `versions` | Empty array `[]` on packages that exist but have no published versions (rare; legacy) |
+| `repository` | Can be string (legacy) or object (current); both are valid |
+
+Convention: **never assume a field exists or has a fixed type without checking**. Wrap field accesses in fallbacks:
+
+```bash
+# When parsing time.<version>:
+PUBLISHED_AT=$(npm view "<pkg>@<v>" "time.<v>" 2>/dev/null)
+# Try ISO-8601 first; fall back to epoch parse; fall back to "unknown"
+case "$PUBLISHED_AT" in
+  [12][0-9][0-9][0-9]-*) ;;        # ISO-8601 (starts with year)
+  [0-9]*) PUBLISHED_AT=$(date -d "@$((PUBLISHED_AT/1000))" -Iseconds);;  # Unix ms epoch
+  *) PUBLISHED_AT="unknown";;
+esac
+
+# When checking dist.attestations:
+HAS_PROVENANCE=$(npm view "<pkg>@<v>" dist.attestations --json 2>/dev/null | jq -r 'if . == null then "no" else "yes" end')
+```
+
+In skill bodies, document the fallback inline rather than assuming the happy-path schema. If a field is essential and missing → STOP with diagnostic, not assume default.
+
+### −1.4c `npm pack --dry-run` defensive parsing (D4)
+
+`npm pack --dry-run --json` output schema:
+
+| Field | Stability |
+|---|---|
+| `name`, `version` | Stable across npm 7+ |
+| `files[]` | Stable; each entry has `path` + `size` |
+| `entryCount` | Added npm 8+; may be missing on npm 7 |
+| `unpackedSize` | Added npm 8+; may be missing on older |
+| `size` | Tarball size (always present) |
+
+Fallback for missing `unpackedSize`:
+
+```javascript
+let unpackedSize = pack[0].unpackedSize;
+if (typeof unpackedSize !== 'number') {
+  // Sum file sizes manually
+  unpackedSize = (pack[0].files || []).reduce((sum, f) => sum + (f.size || 0), 0);
+}
+```
+
+`/verify` Tier 3 (size audit) and `/release` C.7.6 (bundle-size cache) both apply this fallback.
+
+### −1.4d `npm-trust` npx pin (D3, applies to /trust skill)
+
+`/trust` Pre-flight section currently uses `npx -y npm-trust@latest` as a fallback when the CLI isn't installed locally. `@latest` fetches whatever happens to be current on npm — meaning the skill's expectations about flags (`--auto`, `--doctor`, `--json`) may not be satisfied by a future npm-trust release.
+
+Pin to a known-compatible major version:
+
+```bash
+# Instead of: npx -y npm-trust@latest
+# Use:        npx -y npm-trust@^0.4
+```
+
+Bump the pin explicitly when solo-npm tests against a new npm-trust major. Document the pinned major in `/trust` Pre-flight section so future contributors know to update it deliberately.
+
+
+
+### −1.5 Detached HEAD detection (A1, applies to commit/tag-creating skills)
+
+Even though `/unpublish` itself doesn't create commits, the same Phase −1.5 check is the canonical reference for sibling skills (release, prerelease, hotfix, deps, init) that DO. `git status --porcelain` returns clean on detached HEAD, but commits/tags created on detached HEAD become unreachable as soon as the user checks out a different branch.
+
+```bash
+if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+  CURRENT_SHA=$(git rev-parse --short HEAD)
+  echo "ERROR: detached HEAD detected (currently at $CURRENT_SHA)."
+  echo "       Commits or tags created here would become unreachable when you next checkout a branch."
+  echo
+  echo "Fix:   git checkout main          # or your release branch"
+  echo "       Then re-invoke the skill."
+  exit 1
+fi
+```
+
+Apply universally in Phase A of release, prerelease, hotfix, deps, and init. `/unpublish` itself doesn't strictly need this (no commits are created), but the check is cheap and the canonical reference body owns it.
+
+### −1.6 Worktree detection (A2, applies universally)
+
+A skill running inside a `git worktree` has access to the main worktree's `.git` directory but operates on a separate working tree. State reads (`git status`, `git tag`) work correctly, but `state.json` and `.solo-npm/` artifacts may live in the main worktree's checkout, not the current one — leading to confusing cache-state mismatches.
+
+```bash
+if [ "$(git rev-parse --git-path HEAD)" != ".git/HEAD" ] && \
+   [ "$(git rev-parse --git-path HEAD)" != "$(git rev-parse --git-dir)/HEAD" ]; then
+  echo "ERROR: detected git worktree (not the main working directory)."
+  echo "       solo-npm skills assume the main worktree because .solo-npm/ artifacts and"
+  echo "       package.json scaffolding decisions are tied to it."
+  echo
+  echo "Fix:   cd \$(git worktree list | head -1 | awk '{print \$1}')"
+  echo "       Then re-invoke the skill."
+  exit 1
+fi
+```
+
+Apply universally in Phase A of every skill that mutates git or scaffolding state.
+
+### −1.7 `gh` pre-flight (A3, hoisted from per-call to Phase −1)
+
+The v0.10.0 implementation in `/unpublish` Phase −1.1 already detects `gh` presence + auth and sets `GH_AVAILABLE`. v0.11.0 hoists this same pattern to Phase A of **every** skill that uses `gh` (release, prerelease, hotfix, status), so the user knows up-front if gh is unavailable rather than discovering it mid-flow:
+
+```bash
+# Same pattern as /unpublish Phase −1.1 — applied as Phase A.0 in every gh-using skill
+if command -v gh >/dev/null 2>&1; then
+  if gh auth status >/dev/null 2>&1; then
+    GH_AVAILABLE=1
+    GH_VERSION=$(gh --version | head -1 | awk '{print $3}')
+  else
+    GH_AVAILABLE=0
+    GH_REASON="installed but not authenticated (run 'gh auth login')"
+  fi
+else
+  GH_AVAILABLE=0
+  GH_REASON="not installed (https://cli.github.com)"
+fi
+
+# Phase A summary block surfaces this for the user:
+#   gh: ready (v2.40.0)
+#   gh: installed but not authenticated — run 'gh auth login' to enable CI watch + GitHub Release creation
+#   gh: not installed — install from https://cli.github.com to enable CI watch + GitHub Release creation
+#
+# Then any later phase that wants gh checks $GH_AVAILABLE before invoking.
+```
+
+The skills using `gh` should NOT halt if `GH_AVAILABLE=0` — instead they should gracefully skip the gh-dependent step (CI watch, GitHub Release creation/deletion) with a clear "what was skipped and why" note. The user has explicit control to install/auth and re-run.
+
+### −1.8 Stale-lock auto-cleanup (extends H5)
 
 The lock file at `.solo-npm/locks/<sanitized>.lock` holds a PID. If the lock-holding process was killed (SIGKILL, OOM, machine crash), the lock persists. Phase C.0's H5 check is upgraded to **auto-clean stale locks** rather than refusing forever:
 
@@ -164,6 +317,34 @@ Examples:
 - *"rename @gagle/eutils to @ncbijs/eutils"* → `OPERATION=rename-redirect`. Skip prompts.
 - *"I shipped @wrong/foo by mistake — wipe it"* → `OPERATION=unpublish-all, OLD_NAME=@wrong/foo`. Skip prompts.
 - Bare *"unpublish"* → AskUserQuestion which package + which version.
+
+## Phase 0.5 — Prompt-extraction validation (E1, E2, E3 canonical from v0.11.0)
+
+After Phase 0 pre-fills slots from the user's prompt, validate every extracted value against a strict regex before passing to Phase A. Lenient extraction lets typos and malformed values flow through to destructive operations; strict-safety requires rejection at the boundary.
+
+| Slot | Regex (anchored) | Why |
+|---|---|---|
+| **Semver version** (`VERSION`, `NEXT_VERSION`, range targets) | `^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+)?$` | npm semver: M.m.p with optional pre-release suffix and build metadata |
+| **Pre-release identifier** (`IDENTIFIER`) | `^(alpha\|beta\|rc\|canary\|experimental\|next\|preview\|edge)$` | Whitelist — typos like "alpa", "betta" rejected |
+| **Package scope** (`SCOPE`, when of the form `@<scope>`) | `^@[a-z0-9][a-z0-9._-]*$` | npm scope rules |
+| **Package name** (`OLD_NAME`, `NEW_NAME`, `NAME`) | `^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$` | npm package name: optional scope + name, lowercase, no leading `.` or `_` |
+| **dist-tag name** (`TAG`) | `^[a-z][a-z0-9-]*$` | npm dist-tag rules: lowercase letter start, alphanumerics + hyphens |
+| **Semver range** (for `/deprecate` `RANGE`) | semver-parse via `semver.validRange()` | Defer to npm's bundled semver lib for range syntax |
+
+**On validation failure**: STOP with diagnostic naming the slot + offending value + the expected format. Don't silently fall through to AskUserQuestion (which would just re-prompt for the same slot the user already gave).
+
+```bash
+# Example validation in /unpublish for VERSION extraction:
+if [ -n "$VERSION" ] && ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+)?$'; then
+  echo "ERROR: extracted VERSION='$VERSION' is not a valid semver."
+  echo "       Phase 0 saw it in your prompt but it doesn't match: M.m.p[-prerelease][+build]"
+  echo "       Examples of valid: 1.0.0, 1.0.0-beta.1, 2.3.4+sha.abc123"
+  echo "       Re-invoke with a corrected version, or omit and the skill will ask interactively."
+  exit 1
+fi
+```
+
+For `/unpublish`, the canonical extracted slots needing validation are: `OLD_NAME`, `NEW_NAME`, `VERSION`. For sibling skills, the relevant slots vary — they reference this canonical pattern and apply only the regexes for slots they actually extract.
 
 ## Phase A — Pre-flight + per-version eligibility
 
