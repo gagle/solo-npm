@@ -1,6 +1,6 @@
 # Stability roadmap — toward v1.0.0
 
-> Status: solo-npm is in **v0.x experimental**. This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
+> Status: solo-npm is in **v0.x experimental** but **code-side complete** as of v0.13.0. This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
 
 ## Why this doc exists
 
@@ -73,10 +73,6 @@ What remains is **external/temporal** — these validate the API in the wild rat
 
 **v1.0.0 ships when those three are met.** Internal patterns (phase numbering, AskUserQuestion option text, etc.) may keep iterating within v0.x even though the structural commitments above are already shaped to be v1.0.0-stable.
 
-### Polish list (closed)
-
-Previous versions of this doc maintained a `Post-v1.0.0 polish` list of deferred items. **As of v0.13.0, every item on that list has shipped.** See `CHANGELOG.md` v0.13.0 entry for the per-item map. The list is removed from this doc to keep stability.md focused on the forward-looking commitments.
-
 ## Versioning policy in v0.x
 
 Until v1.0.0, we use **minor bumps** for any meaningful change:
@@ -101,13 +97,33 @@ If you're consuming solo-npm via the marketplace plugin in your own repo:
 2. **Wrap behavior, not implementation**: your `.claude/skills/release/SKILL.md` should describe *repo-specific narrative* (workspace shape, verify commands), not re-implement what the baseline does. If the baseline changes, your wrapper still works.
 3. **Track this doc**: when v1.0.0 ships, this doc updates to "stable". Until then, expect minor-version churn.
 
-## Open questions for v1.0.0
+## Resolved questions (formerly "Open questions for v1.0.0")
 
-These are deliberately unresolved; will be answered before v1.0.0 ships:
+Earlier drafts of this doc listed 4 questions to be answered before v1.0.0. Each is now resolved:
 
-- **Stable trigger-phrase set**: how many trigger phrases per skill is canonical? Is a phrase added in v1.X.Y a stability promise or just a quality-of-life addition?
-- **Wrapper template stability**: `/init` scaffolds wrapper templates. Are those wrapper bodies stable, or can we improve them?
-- **`agent-skills` composition contract**: we name `agent-skills:debugging-and-error-recovery` in `/hotfix` Phase D.2 and `/deps` Phase 4d. If `agent-skills` renames that skill, we'd silently break. Should we pin the dependency?
-- **deps.dev API stability**: Google maintains the API; if they deprecate v3, we need a fallback. Document the fallback path before v1.0.0.
+| Question | Resolution |
+|---|---|
+| **Trigger-phrase stability** | Phrases existing at v1.0.0 are stable (consumers may rely on them); see "Skill description trigger phrases that exist in v1.0.0" row in the commitments table. Adding new phrases in v1.x is free; removing a v1.0.0 phrase requires v2.0.0. |
+| **Wrapper template stability** | Wrapper templates scaffolded by `/init` are **guidance, not stable API**. Users own their wrappers after `/init` runs; future `/init` invocations may produce different templates (this is non-breaking — the user's existing wrapper still works as long as the baseline `/solo-npm:<skill>` it invokes is stable). The commitment is the **scaffold artifact set's existence + location** (`.claude/skills/<skill>/SKILL.md` paths), not the exact wrapper body. |
+| **`agent-skills` composition contract** | `agent-skills` is an **optional enhancement, not a dependency**. Skills detect at runtime if `agent-skills:debugging-and-error-recovery` is available; fall back to `AskUserQuestion` + manual flow otherwise (already implemented in `/hotfix` Phase D.2 and `/deps` Phase 4d as of v0.6.0). If addyosmani/agent-skills renames the skill, solo-npm gracefully degrades — not a v1.0.0 blocker. |
+| **deps.dev API stability** | deps.dev v3 is considered stable as of v0.13.0. **Graceful degradation is already in place**: `/unpublish` Phase A.3 routes 5xx/timeout into the strict-stop branch (refuses unsafe operation); `/status` Phase 2 renders `(deps.dev unavailable)` and continues. If Google deprecates v3, solo-npm will ship a minor release with v4 support; the fallback already protects users in the interim. |
 
-These will be answered in `docs/stability.md` when v1.0.0 ships. For now, they're known-uncertain.
+All 4 are **settled** for v1.0.0 — no further code or doc work required to resolve them.
+
+## What's still outstanding for v1.0.0 (honest list)
+
+Beyond the 3 external/temporal items in the punch list above, a small docs-staleness audit is the only other actual work item before v1.0.0:
+
+| Item | Type | Owner |
+|---|---|---|
+| `CONTRIBUTING.md` audit — confirm it documents the v0.10.0–v0.13.0 patterns (H1–H8, Phase 0.5/0.5b, Phase −1, BCL convention, error-handling reference structure) | Docs | Maintainer |
+| `README.md` audit — verify the "Commands at a glance" + detail subsections still reflect v0.13.0 surface | Docs | Maintainer |
+| `docs/regression.md` audit — verify S1–S12 (early scenarios) haven't drifted relative to current skill bodies | Docs | Maintainer |
+| Run the regression checklist (S1–S33) end-to-end at least once | Validation | Maintainer |
+| `solo-npm-example` demo repo creation | New repo | Maintainer |
+| Wider adoption signal | External | Outreach |
+| Skill-spec drift caught once via the regression checklist before being noticed in production | Temporal | Time + release cycles |
+
+The first 4 are within the maintainer's reach to do directly. The last 3 need the world.
+
+**No new code is required for v1.0.0.** Everything from here is validation, audit, and outreach.
