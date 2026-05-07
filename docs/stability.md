@@ -61,17 +61,21 @@ These are explicit non-promises so consumers don't accidentally depend on them:
 
 ## What needs to land before v1.0.0
 
-**Code-level entry criteria: complete** as of v0.12.0. The hardening pass landed across v0.6.0 → v0.12.0; see [`CHANGELOG.md`](../CHANGELOG.md) for per-version detail.
+**Code-side: complete** as of v0.13.0. No new code is required; everything from here is validation, audit, and outreach.
 
-What remains is **external/temporal** — these validate the API in the wild rather than adding code:
+| Item | Type | Owner |
+|---|---|---|
+| `CONTRIBUTING.md` audit — confirm it documents the v0.10.0–v0.13.0 patterns (H1–H8, Phase 0.5/0.5b, Phase −1, BCL convention, error-handling reference structure) | Docs | Maintainer |
+| `README.md` audit — verify the "Commands at a glance" + detail subsections still reflect v0.13.0 surface | Docs | Maintainer |
+| `docs/regression.md` audit — verify S1–S12 (early scenarios) haven't drifted relative to current skill bodies | Docs | Maintainer |
+| Run the regression checklist (S1–S33) end-to-end at least once | Validation | Maintainer |
+| `solo-npm-example` demo repo creation | New repo | Maintainer |
+| Wider adoption signal — at least one external user beyond the maintainer's portfolio | External | Outreach |
+| Skill-spec drift caught once via the regression checklist before being noticed in production | Temporal | Time + release cycles |
 
-| Item | Why it's still open |
-|---|---|
-| Demo / showcase repo (`solo-npm-example`) | Not yet started. The maintainer's own portfolio (rfc-bcp47, ncbijs, npm-trust) currently serves as dogfood. |
-| Wider adoption signal — at least one external user beyond the maintainer's portfolio | Depends on outreach. v1.0.0 won't declare stability without external validation. |
-| Skill-spec drift caught once via the regression checklist before being noticed in production | Requires release cycles. |
+The first 4 are within the maintainer's reach to do directly. The last 3 need the world.
 
-**v1.0.0 ships when those three are met.** Internal patterns (phase numbering, AskUserQuestion option text, etc.) may keep iterating within v0.x even though the structural commitments above are already shaped to be v1.0.0-stable.
+**v1.0.0 ships when all 7 are met.** Internal patterns (phase numbering, AskUserQuestion option text, etc.) may keep iterating within v0.x even though the structural commitments above are already shaped to be v1.0.0-stable.
 
 ## Versioning policy in v0.x
 
@@ -97,33 +101,3 @@ If you're consuming solo-npm via the marketplace plugin in your own repo:
 2. **Wrap behavior, not implementation**: your `.claude/skills/release/SKILL.md` should describe *repo-specific narrative* (workspace shape, verify commands), not re-implement what the baseline does. If the baseline changes, your wrapper still works.
 3. **Track this doc**: when v1.0.0 ships, this doc updates to "stable". Until then, expect minor-version churn.
 
-## Resolved questions (formerly "Open questions for v1.0.0")
-
-Earlier drafts of this doc listed 4 questions to be answered before v1.0.0. Each is now resolved:
-
-| Question | Resolution |
-|---|---|
-| **Trigger-phrase stability** | Phrases existing at v1.0.0 are stable (consumers may rely on them); see "Skill description trigger phrases that exist in v1.0.0" row in the commitments table. Adding new phrases in v1.x is free; removing a v1.0.0 phrase requires v2.0.0. |
-| **Wrapper template stability** | Wrapper templates scaffolded by `/init` are **guidance, not stable API**. Users own their wrappers after `/init` runs; future `/init` invocations may produce different templates (this is non-breaking — the user's existing wrapper still works as long as the baseline `/solo-npm:<skill>` it invokes is stable). The commitment is the **scaffold artifact set's existence + location** (`.claude/skills/<skill>/SKILL.md` paths), not the exact wrapper body. |
-| **`agent-skills` composition contract** | `agent-skills` is an **optional enhancement, not a dependency**. Skills detect at runtime if `agent-skills:debugging-and-error-recovery` is available; fall back to `AskUserQuestion` + manual flow otherwise (already implemented in `/hotfix` Phase D.2 and `/deps` Phase 4d as of v0.6.0). If addyosmani/agent-skills renames the skill, solo-npm gracefully degrades — not a v1.0.0 blocker. |
-| **deps.dev API stability** | deps.dev v3 is considered stable as of v0.13.0. **Graceful degradation is already in place**: `/unpublish` Phase A.3 routes 5xx/timeout into the strict-stop branch (refuses unsafe operation); `/status` Phase 2 renders `(deps.dev unavailable)` and continues. If Google deprecates v3, solo-npm will ship a minor release with v4 support; the fallback already protects users in the interim. |
-
-All 4 are **settled** for v1.0.0 — no further code or doc work required to resolve them.
-
-## What's still outstanding for v1.0.0 (honest list)
-
-Beyond the 3 external/temporal items in the punch list above, a small docs-staleness audit is the only other actual work item before v1.0.0:
-
-| Item | Type | Owner |
-|---|---|---|
-| `CONTRIBUTING.md` audit — confirm it documents the v0.10.0–v0.13.0 patterns (H1–H8, Phase 0.5/0.5b, Phase −1, BCL convention, error-handling reference structure) | Docs | Maintainer |
-| `README.md` audit — verify the "Commands at a glance" + detail subsections still reflect v0.13.0 surface | Docs | Maintainer |
-| `docs/regression.md` audit — verify S1–S12 (early scenarios) haven't drifted relative to current skill bodies | Docs | Maintainer |
-| Run the regression checklist (S1–S33) end-to-end at least once | Validation | Maintainer |
-| `solo-npm-example` demo repo creation | New repo | Maintainer |
-| Wider adoption signal | External | Outreach |
-| Skill-spec drift caught once via the regression checklist before being noticed in production | Temporal | Time + release cycles |
-
-The first 4 are within the maintainer's reach to do directly. The last 3 need the world.
-
-**No new code is required for v1.0.0.** Everything from here is validation, audit, and outreach.
