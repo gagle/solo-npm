@@ -1,5 +1,86 @@
 # Changelog
 
+## v0.19.0 — Mega-release: 16 new skills + narrowed scope to publish/release lifecycle
+
+This is the largest single solo-npm release to date. PART III of the strategic roadmap ([plans](https://github.com/gagle/solo-npm)) lands in one cohesive cut, narrowing solo-npm's mission to **the AI-driven release wizard for TypeScript npm packages** — everything orbits around `npm publish`/release.
+
+The way the project is built no longer matters to solo-npm. The only repo-shape inputs solo-npm tracks are: (1) monorepo vs single-package, (2) TypeScript (assumed). Lint/test/build tool choices, daily-dev hygiene, doc generation, code-health analyzers, config presets — all explicitly outside scope.
+
+This release ships standalone (no family-substrate work). It runs against the existing `npm-trust@0.11.0` + `prepare-dist@1.1.0` via the implicit JSON wire-format protocol that already works. The substrate plan stays in the roadmap for a future minor.
+
+### Added — 16 new skills
+
+#### Health & diagnosis
+
+- **`/solo-npm:doctor`** — pure read-only umbrella health check. 5 publish-domains (trust, provenance, config-publish, security-gate, publish-readiness) with each issue mapped to a remediation skill. Produces a structured `DoctorReport` (JSON via `--json`).
+- **`/solo-npm:doctor --fix`** — auto-remediation pass over /doctor's findings. Chains into /init, /migrate, /trust, etc. for safe fixes; surfaces non-safe ones with the exact remediation command.
+- **`/solo-npm:toolchain`** — meta-skill exposing the cached `--capabilities` descriptors for installed conformant tools (npm-trust, prepare-dist). Lets users force-refresh after upgrading a tool.
+
+#### TypeScript publish-gates (highest leverage)
+
+- **`/solo-npm:types`** — runs [arethetypeswrong (attw)](https://arethetypeswrong.github.io) against the packed tarball. Catches dual-package + ESM/CJS resolution bugs that publint misses. Becomes /verify Tier 6.
+- **`/solo-npm:public-api`** — extracts the public API surface from current dist/, diffs against last released version, classifies as patch/minor/major. The single highest-leverage skill: catches accidental breaking changes BEFORE /release tags. Becomes a HARD GATE in /release Phase A.2b — STOPs if requested bump is less than diff classification.
+- **`/solo-npm:exports-check`** — verifies `package.json#exports` map points at files that actually exist in dist/. Catches "renamed file but forgot to update exports". Becomes /verify Tier 7.
+
+#### Pre/post-publish hardening
+
+- **`/solo-npm:smoke-test`** — packs the tarball, installs into a temp fixture, runs an import-and-invoke smoke test on every public export. Catches "the published tarball doesn't actually work" — the bug class no other check catches. Becomes /verify Tier 8.
+- **`/solo-npm:provenance-verify`** — post-publish: confirms the registry's SLSA attestations for the just-published tarball. Wraps `npm-trust --verify-provenance --json` with friendlier output.
+
+#### Security release-gates
+
+- **`/solo-npm:supply-chain`** — deep audit beyond CVEs: provenance state of every transitive dep, license compatibility, package-age risk, typosquatting detection, maintainer-count signals. Per-dep risk score; surfaces high-risk deps as release-gate fails.
+- **`/solo-npm:lockfile-audit`** — detects suspicious lockfile diffs. Flags integrity-hash-changes-without-version-changes (force-push attack signature), orphan transitive deps, version downgrades.
+- **`/solo-npm:secrets-audit`** — gitleaks wrapper. Scans repo + git history for committed secrets. Findings always masked (never echoes actual values).
+
+#### Monorepo + bundle
+
+- **`/solo-npm:workspace remove <pkg>`** — destructive lifecycle op for monorepo: chains /deprecate + optional /unpublish + filesystem removal + CHANGELOG update. Two-step confirmation gate per H1 destructive convention.
+- **`/solo-npm:release --changed-only`** — extension to /release: detects which workspace packages have source changes since the last release tag and operates only on that subset. Per-package tags (`<pkg-name>-v<version>`). Critical for monorepo releases.
+- **`/solo-npm:bundle-analyze`** — explains tarball composition. Top contributors by file size; bundler metafile breakdown when available; comparison vs last published version.
+
+#### Migration + AI repair
+
+- **`/solo-npm:migrate`** — upgrades existing solo-npm-using repos: state.json schema v1→v2→v3, pin convention bumps, release.yml drift refresh. Each migration is idempotent.
+- **`/solo-npm:opt-in <feature>`** — adopts a publish-related convention. v0.19.0 features: `prepare-dist` (switch to publish-from-dist), `capabilities-protocol` (scaffold --capabilities for repos that themselves expose CLIs).
+- **`/solo-npm:explain`** — diagnoses a failed release CI run. Fetches `gh run view --log-failed`; surfaces the failure + AI-synthesized explanation; suggests remediation as concrete /solo-npm:* invocations.
+
+### Changed — existing skills narrowed (PART III scope)
+
+- **`/init`** — now scaffolds ONLY publish-related files: `release.yml`, `state.json`, `.claude/settings.json`, `package.json#publishConfig`. Does NOT touch tsconfig, vitest, eslint, husky, LICENSE, README, .nvmrc — those are project-build concerns out of solo-npm's scope.
+- **`/verify`** — adds Tiers 5-8 (pkg-check + types + exports-check + smoke-test). Tier 1-4 (lint/typecheck/test/build) call the project's own scripts agnostically — solo-npm has no opinion about which build tool the project uses.
+- **`/release` Phase A.0**: NEW changed-only mode for monorepos. Phase A.2b: NEW /public-api hard gate (default-on).
+- **`/release` Phase A.3**: cache-aware + content-aware (workflowFileHash) trust check — already in v0.17.0+, extended in v0.19.0 with toolchain cache.
+
+### Added — state.json schema v3
+
+- New `toolchain` section caches `--capabilities --json` descriptors from npm-trust + prepare-dist (TTL 1 day). Used by /doctor's domain probes for feature-presence checks.
+- New `pkgCheck` section formalizes the bundle-size-baseline cache used by /verify Tier 4 and /release C.7.6 (already implicit in v0.17.0+; now explicit in the schema).
+- v1 → v2 → v3 migrations are auto-applied by /migrate (or implicitly on first read by any v0.19.0 skill).
+
+### Out of scope (per PART III)
+
+Per the v0.19.0 narrowed scope decision, these are explicit non-goals:
+
+- Greenfield repo scaffolding (build-tool, lint, test setup) — would be `create-solo-package` (deferred)
+- Daily-dev tooling integration (commitlint, husky, lint-staged) — out of scope
+- Documentation generation (typedoc, README synthesis) — out of scope
+- Code-health analyzers (knip dead-code, madge circular, lint-fix sugar) — out of scope
+- Config presets (tsconfig-base, eslint-config-solo, vitest-config-solo) — out of scope
+- AI-orchestrated repair beyond release CI — `/explain` is in (release CI specifically); generic `/fix` is out
+
+If/when scope re-expands, those plans are preserved in PART I + PART II of the strategic roadmap. PART III is the active scope.
+
+### Deferred (preserved for future minor)
+
+The family substrate work (cli-capability-protocol + tck + solo-cli-conventions) and consumer migrations (npm-trust v0.12, prepare-dist v1.2) are deferred. solo-npm@0.19.0 ships against npm-trust@0.11.0 + prepare-dist@1.1.0, consuming their existing implicit `--capabilities --json` shape directly. Substrate work re-activates in a future minor with no required solo-npm bump (solo-npm consumes JSON wire format, not TS types).
+
+### Migration notes
+
+- `.solo-npm/state.json` auto-migrates on first read of any v0.19.0 skill: v1 → v2 (adds `trust.workflowFileHash`); v2 → v3 (adds `pkgCheck` + `toolchain`). No user action required.
+- `/init` retains its pre-v0.19.0 scope for already-scaffolded repos — re-running it is non-destructive.
+- The newly inlined `SOLO_EXIT_CODES` / `SoloFeature` / capability-shape constants in solo-npm's skill bodies are clearly annotated for future extraction into `solo-cli-conventions` when the substrate ships.
+
 ## v0.18.0 — Drop npm-package version pins; track `@latest` via runtime capability probe
 
 solo-npm now resolves every npm package it orchestrates (`npm-trust`,

@@ -493,13 +493,13 @@ If existing, **merge keys** — add `extraKnownMarketplaces.gllamas-skills`
 and `enabledPlugins["solo-npm@gllamas-skills"]: true` if not already
 present. Preserve any other keys in the file.
 
-#### `.solo-npm/state.json` — trust + audit state cache (schema v2 in v0.17.0+)
+#### `.solo-npm/state.json` — trust + audit + toolchain + pkgCheck state cache (schema v3 in v0.19.0+)
 
 If missing, create with an empty cache:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "trust": {
     "configured": [],
     "lastFullCheck": null,
@@ -511,6 +511,16 @@ If missing, create with an empty cache:
     "tier2Count": 0,
     "lastFullScan": null,
     "ttlDays": 1
+  },
+  "pkgCheck": {
+    "lastSize": {},
+    "lastFullScan": null,
+    "ttlDays": 1
+  },
+  "toolchain": {
+    "lastProbe": null,
+    "ttlDays": 1,
+    "tools": {}
   }
 }
 ```
@@ -518,24 +528,86 @@ If missing, create with an empty cache:
 This file is the per-repo state cache used by:
 - `/solo-npm:release` Phase A.3 — skips per-package trust re-checks via the `trust` section. Uses `trust.workflowFileHash` (sha256 of `release.yml`, captured from `npm-trust --doctor --json`'s `workflowSnapshot.fileHash`) for **content-aware invalidation** — workflow edits force a re-verify even within the time-TTL.
 - `/solo-npm:release` Phase A.5 — skips known-good audit re-runs via the `audit` section; STOPs the release if cached `tier1Count > 0`.
+- `/solo-npm:release` Phase C.7.6 — writes `pkgCheck.lastSize[<pkg>@<version>]` after each successful publish for `/verify` Tier 4 bundle-size baselines (last 3 versions per package).
 - `/solo-npm:status` — renders the Trust column from cache without live npm calls.
+- `/solo-npm:doctor` (NEW v0.19.0) — reads `toolchain` cache to know which features the installed `npm-trust` / `prepare-dist` expose; refreshes via `--capabilities --json` probes when stale.
+- `/solo-npm:toolchain` (NEW v0.19.0) — meta-skill that surfaces the cached descriptors and lets users force-refresh.
 
-**Migration from v1 → v2.** If `.solo-npm/state.json` exists with
-`version: 1` (i.e., from a pre-v0.17.0 solo-npm), auto-upgrade on
-first read by adding `trust.workflowFileHash: null`. The first
-`/release` after migration takes the cold path (filling the hash); no
-user action required.
+**`toolchain` section schema** (added in v0.19.0):
+
+```json
+{
+  "lastProbe": "2026-05-09T12:00:00Z",
+  "ttlDays": 1,
+  "tools": {
+    "npm-trust": {
+      "version": "0.11.0",
+      "level": 3,
+      "features": ["doctor","validate-only","verify-provenance","emit-workflow",
+                   "with-prepare-dist","list","configure","json-output"],
+      "flags": ["--scope","--packages","--repo","--workflow","--auto",
+                "--list","--only-new","--dry-run","--doctor","--json",
+                "--emit-workflow","--with-prepare-dist","--verify-provenance",
+                "--validate-only","--capabilities","--help"],
+      "jsonSchemas": [
+        {"flag": "--doctor --json", "schema": "DoctorReport", "version": 2},
+        {"flag": "--list --json", "schema": "ListReport", "version": 1},
+        {"flag": "--validate-only --json", "schema": "ValidateReport", "version": 1},
+        {"flag": "--verify-provenance --json", "schema": "VerifyProvenanceReport", "version": 2},
+        {"flag": "--json (configure)", "schema": "ConfigureReport", "version": 1},
+        {"flag": "--capabilities --json", "schema": "CapabilitiesReport", "version": 1}
+      ],
+      "exitCodes": [
+        {"code": 0, "name": "SUCCESS"},
+        {"code": 1, "name": "GENERIC_FAILURE"},
+        {"code": 10, "name": "CONFIGURATION_ERROR"},
+        {"code": 20, "name": "AUTH_FAILURE"},
+        {"code": 21, "name": "OTP_REQUIRED"},
+        {"code": 30, "name": "WORKSPACE_DETECTION_FAILED"},
+        {"code": 40, "name": "REGISTRY_UNREACHABLE"},
+        {"code": 50, "name": "WEB_2FA_TIMEOUT"},
+        {"code": 60, "name": "PARTIAL_FAILURE"}
+      ]
+    },
+    "prepare-dist": {
+      "version": "1.1.0",
+      "level": 3,
+      "features": ["transform","copy-metadata","verify-tag","json-output","plugins"],
+      "flags": ["--path","--dist","--tag","--json","--capabilities","--help"],
+      "jsonSchemas": [
+        {"flag": "--json", "schema": "PrepareDistReport", "version": 1},
+        {"flag": "--capabilities --json", "schema": "CapabilitiesReport", "version": 1}
+      ],
+      "exitCodes": [
+        {"code": 0, "name": "SUCCESS"},
+        {"code": 1, "name": "GENERIC_FAILURE"},
+        {"code": 10, "name": "CONFIGURATION_ERROR"},
+        {"code": 30, "name": "MISSING_INPUTS"},
+        {"code": 40, "name": "TAG_MISMATCH"},
+        {"code": 50, "name": "TRANSFORM_FAILURE"}
+      ]
+    }
+  }
+}
+```
+
+The toolchain cache is populated via `--capabilities --json` probes against the resolved binaries. Refresh when:
+- `lastProbe` is null (first run / migration / corruption recovery)
+- `(now - lastProbe) > ttlDays`
+- Tool's `version` field changes between probes
+- `/solo-npm:toolchain refresh` invoked manually
+
+**Migration from v1 → v2 → v3** (idempotent):
+- v1 → v2: add `trust.workflowFileHash: null`. First `/release` after migration takes the cold path to fill it.
+- v2 → v3: add `pkgCheck` section (if missing) and `toolchain` section (empty). First `/release` populates `pkgCheck` from prior runs; first `/doctor` populates `toolchain` via probes.
 
 The first `/release` and `/audit` after init populate their respective sections via cold-path scans. Subsequent invocations (within each section's `ttlDays`, with unchanged `workflowFileHash`) take the hot path — zero per-package npm calls (uses `--validate-only --json` instead of `--doctor`).
 
-**Cache TTLs**: trust = 7 days (trust state changes infrequently). Audit = 1 day (CVE landscape changes faster).
+**Cache TTLs**: trust = 7 days (trust state changes infrequently). Audit = 1 day (CVE landscape changes faster). pkgCheck = 1 day (bundle-size baselines kept indefinitely; freshness is per-version). Toolchain = 1 day (capability descriptors don't change unless tool version does).
 
-The file is **committed** (not gitignored) — package names are public
-on npm anyway, and committing gives cross-machine cache sharing for
-solo-dev.
+The file is **committed** (not gitignored) — package names are public on npm anyway, and committing gives cross-machine cache sharing for solo-dev.
 
-If `.solo-npm/state.json` already exists at `version: 2`, leave it
-alone. If at `version: 1`, apply the v1 → v2 migration above.
+If `.solo-npm/state.json` already exists at `version: 3`, leave it alone. If at v1 or v2, apply the migrations above on first read.
 
 #### `CONTRIBUTING.md` (optional)
 

@@ -135,6 +135,32 @@ After regex validation passes, apply the shell-safety check from `/unpublish` Ph
 
 ## Phase A — Pre-flight
 
+### A.0 Changed-only mode (monorepo, NEW v0.19.0)
+
+If the user passed `--changed-only` (or `--since=<ref>`), this is a **monorepo-only filtered release**. Detect which workspace packages have source changes since the baseline ref, and operate only on that subset.
+
+```bash
+BASELINE_REF=${SINCE_REF:-$(git tag --list 'v*' --sort=-v:refname | head -1)}
+CHANGED_PACKAGES=()
+for pkg_dir in $(detect_workspace_packages); do
+  if ! git diff --quiet "$BASELINE_REF" -- "$pkg_dir"; then
+    PKG_NAME=$(node -p "require('./$pkg_dir/package.json').name")
+    CHANGED_PACKAGES+=("$PKG_NAME")
+  fi
+done
+```
+
+If `CHANGED_PACKAGES` is empty, STOP with "No packages changed since $BASELINE_REF; nothing to release." This is an information signal, not an error — exit 0.
+
+If non-empty, the rest of /release operates ONLY on `CHANGED_PACKAGES`:
+- /verify Tier 1-8 runs against each changed package
+- /public-api gate runs per changed package
+- Tag scheme: per-package tags (`<pkg-name>-v<version>`) instead of root `v<version>`
+- CHANGELOG: per-package CHANGELOG.md updates
+- Plan rendering (Phase B): shows the change set explicitly so the user can confirm
+
+If NOT in changed-only mode AND the repo is a monorepo, /release operates on ALL workspace packages (the existing behavior). Single-package repos ignore this flag.
+
 ### A.1 Working tree must be clean
 
 ```bash
@@ -151,7 +177,29 @@ if one exists). If neither is available, fall back to the project's
 verification commands (detected from `package.json#scripts.lint`,
 `package.json#scripts.test`, `package.json#scripts.build`).
 
-If verification fails, **STOP** and surface the error.
+As of v0.19.0, /verify runs Tiers 1-8 by default — including the new TS publish-gates: `/types` (attw), `/exports-check`, and `/smoke-test`. If any tier fails, **STOP** and surface the error.
+
+### A.2b Public API breaking-change gate (NEW v0.19.0 — HARD GATE)
+
+After /verify but BEFORE staging the version bump, run `/solo-npm:public-api`:
+
+```bash
+/solo-npm:public-api --strict
+```
+
+This:
+1. Extracts the current dist/'s public API surface (function/class/interface/type/enum signatures)
+2. Fetches the last released version's surface from the npm registry
+3. Diffs and classifies: patch (no public-API change), minor (only added), major (any removed or signature-narrowed)
+4. Compares against `NEXT_VERSION` (the user's requested bump)
+
+If the classification > requested bump (e.g., user requested patch but diff is major), **STOP** with the precise version-bump suggestion. The user must either:
+1. Bump version higher to match the diff (the recommended path)
+2. Pass `--api-strict=false` to override (rare, e.g., when a "removed" symbol is provably unused by anyone)
+
+The convention: **TS-library breaking changes always require a major bump.** /public-api enforces this by default.
+
+For first releases (no baseline on npm), /public-api exits 0 with a "first release — no baseline" note. /release continues normally.
 
 ### A.3 Trust + environment check (cache-aware, content-aware as of v0.17.0)
 

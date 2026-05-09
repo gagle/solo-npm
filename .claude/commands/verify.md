@@ -36,15 +36,26 @@ If a wrapper at `.claude/skills/verify/SKILL.md` provides explicit
 commands (e.g., `pnpm nx run-many -t lint typecheck build test`), use
 those instead.
 
-## Default sequence
+## Default sequence (v0.19.0+ tiers)
 
 Run in order, halting on the first non-zero exit (per the severity rules in §pkg-check):
 
-1. Lint
-2. Typecheck (if separate from lint)
-3. Test
-4. Build
-5. **Pkg-check** — `package.json` completeness + tarball-content audit (see below)
+1. **Tier 1 — Lint** — runs `pnpm run lint` (or detected equivalent). Build-tool agnostic: solo-npm doesn't pick the linter. Whatever the project has scripted, that's what runs.
+2. **Tier 2 — Typecheck** (if separate from lint) — runs `pnpm run typecheck`.
+3. **Tier 3 — Test** — runs `pnpm run test`. Same agnostic principle: vitest, jest, node:test, mocha — all equally fine.
+4. **Tier 4 — Build** — runs `pnpm run build`. Asserts `dist/` exists after.
+5. **Tier 5 — Pkg-check** — `package.json` completeness + tarball-content audit (publint + manual checks). Publish-specific.
+6. **Tier 6 — Types check (NEW v0.19.0)** — chains into `/solo-npm:types` (attw wrapper). Catches dual-package + ESM/CJS resolution issues. Default-on; opt out via `--skip-types`.
+7. **Tier 7 — Exports check (NEW v0.19.0)** — chains into `/solo-npm:exports-check`. Verifies `package.json#exports` against actual `dist/`. Default-on; opt out via `--skip-exports`.
+8. **Tier 8 — Smoke test (NEW v0.19.0)** — chains into `/solo-npm:smoke-test`. Pack the tarball, install into a fixture, run import smoke test. Default-on; opt out via `--skip-smoke` (but solo-dev users RARELY should — this is the highest-leverage publish gate).
+
+The legacy `Step 5 — pkg-check` content below is preserved for the Tier 5 details. Tiers 6-8 chain into their respective skills; output formatting follows the chained skill's report.
+
+**`--pkg-check-only` mode** (legacy + extended): runs Tiers 5-8 only (skip 1-4). Used by `/solo-npm:init` Phase 1d for fast scaffolds-only validation.
+
+**`/release` Phase A integration**: `/release` invokes `/verify` with all tiers; additionally runs `/solo-npm:public-api` as a hard gate (NEW v0.19.0; STOPs if the requested version bump is less than the diff classification). See `/release` Phase A.
+
+**Build-tool agnosticism (PART III contract)**: solo-npm has no opinion about which lint/test/build tool the project uses. Tier 1-4 invoke the project's own scripts. Tier 5-8 are publish-specific gates that run against the OUTPUT of the build, regardless of how the build was produced.
 
 ### `--pkg-check-only` mode
 
