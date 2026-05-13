@@ -551,6 +551,255 @@ Then: *"ship the patch"* → /release ships `1.5.2` (or whatever) with the dep u
 
 **Verify**: no publish. The user gets a clear remediation path. After fixing (`core.autocrlf=input` + re-checkout), the same `/verify` run passes Tier 3.
 
+### S34 — `/doctor` produces a 5-domain report on a healthy repo (v0.19.0)
+
+**Setup**: a repo already through `/solo-npm:init` + `/solo-npm:trust`. `.solo-npm/state.json#trust.configured` is fresh. Working tree clean.
+
+**Trigger**: *"is my repo healthy?"*
+
+**Expected** (current as of v0.19.0):
+- Pure read-only run; no mutations.
+- Domain 1 (trust): probes `npm-trust --doctor --json`; reads `state.json#trust.workflowFileHash` and compares against the live `release.yml` hash. Green.
+- Domain 2 (provenance): inspects `package.json#publishConfig.provenance` + the latest published version's `dist.attestations`. Green.
+- Domain 3 (config-publish): validates `publishConfig`, `engines.node`, `files`/`exports`/`main`/`types`. Green.
+- Domain 4 (security-gate): reads `state.json#audit.tier1Count`; runs a fast `npm audit --audit-level=high --json` if cache is stale (> 24h). Green.
+- Domain 5 (publish-readiness): checks for uncommitted changes, drift since last tag, lockfile/.npmrc presence. Green.
+- Single `DoctorReport` table rendered (one row per domain). Exit code 0.
+
+**Verify**: `--json` mode dumps the structured report; without `--json`, the table renders cleanly. `state.json` is unchanged.
+
+### S35 — `/doctor --fix` auto-remediates a missing-trust repo (v0.19.0)
+
+**Setup**: a repo with `release.yml` scaffolded but `/solo-npm:trust` never run — `state.json#trust.configured == false`.
+
+**Trigger**: *"diagnose the repo and fix what you can"*
+
+**Expected**:
+- Domain 1 (trust): probe finds `configured == false`. Issue surfaced with `remediation: "/solo-npm:trust"`.
+- `--fix` mode runs the safe-to-auto-chain set. Trust is in the safe set → auto-chains into `/solo-npm:trust`.
+- The chained skill runs its own H6 chain-failure recovery if any sub-step STOPs (e.g., user paused at the 2FA handoff).
+- Non-safe issues (e.g., missing `publishConfig.provenance` on a private registry — semantic decision) are surfaced with the exact remediation command, NOT auto-applied.
+- Re-running `/solo-npm:doctor` after the chain returns green on Domain 1.
+
+**Verify**: `state.json#trust.configured == true` after the chain; the live `release.yml` is unchanged (trust setup is npm-side, not file-side); a registry-side trust binding check (e.g., `npm-trust --doctor`) reports configured.
+
+### S36 — `/public-api` HARD GATE blocks a patch bump on a breaking diff (v0.19.0)
+
+**Setup**: a repo on `1.5.0` (stable). The maintainer removed an exported function `oldFoo()` from the public API. `git log` since `v1.5.0` shows the change as `refactor: clean up legacy API`.
+
+**Trigger**: *"ship a patch release"*
+
+**Expected** (current as of v0.19.0):
+- `/release` Phase A.2b invokes `/solo-npm:public-api`.
+- public-api extracts the current `dist/` surface (TypeScript declarations) and diffs against the tarball published as `1.5.0`.
+- Classifier: removed export → **major** diff.
+- Requested bump (`patch` → `1.5.1`) < diff classification (`major`) → HARD STOP.
+- Renders the diff summary: *"❌ PUBLIC-API BREAKING CHANGE DETECTED. Removed: oldFoo(). Requested bump is patch but diff requires major. Options: (a) bump to 2.0.0 (b) re-add oldFoo() as a deprecated re-export (c) override with --ignore-public-api (dangerous; documents the override in CHANGELOG)."*
+- No commit, no tag, no publish.
+
+**Verify**: `git tag --list v1.5.1` returns empty. Re-running with the proposed bump `--bump major` proceeds normally (`2.0.0`).
+
+### S37 — `/types` catches a broken `types` pointer (v0.19.0)
+
+**Setup**: a dual-package repo (`main` + `module` + `types`). The maintainer renamed `dist/index.d.ts` → `dist/types/index.d.ts` but forgot to update `package.json#types`.
+
+**Trigger**: *"check types"* or `/solo-npm:verify` Tier 5.
+
+**Expected**:
+- `/types` packs the tarball (`npm pack --json`); runs `arethetypeswrong --pack` (or `attw --pack`).
+- attw reports `NoResolution` or `FallbackCondition` (depending on consumer config). Severity: error.
+- HARD STOPs: *"❌ TYPES RESOLUTION FAILED. attw reports: <verbatim>. Likely cause: `package.json#types` points at `dist/index.d.ts`, which does not exist in the tarball. Fix `types`/`exports` map or move the file."*
+- `/verify` Tier 5 inherits the STOP; no publish.
+
+**Verify**: post-fix (correct `types` path), the same `/types` run passes (no error severities).
+
+### S38 — `/exports-check` orphan export STOPs verify (v0.19.0)
+
+**Setup**: `package.json#exports = { ".": "./dist/index.js", "./sub": "./dist/sub.js" }`. A refactor renamed `dist/sub.js` → `dist/submodule.js` but `package.json#exports["./sub"]` still points at the old path.
+
+**Trigger**: `/solo-npm:verify` (Tier 7) or *"validate package.json exports"*.
+
+**Expected**:
+- `/exports-check` runs `npm pack --json --dry-run`; reads the tarball's file list; cross-references against `package.json#exports` paths.
+- Orphan detected: `./dist/sub.js` referenced by `exports["./sub"]` but absent from the tarball.
+- HARD STOPs: *"❌ EXPORTS ORPHAN: `./sub` → `./dist/sub.js` (missing in tarball). Tarball contains `./dist/submodule.js` — did you rename without updating exports? Fix the exports map or restore the file."*
+- `/verify` Tier 7 inherits the STOP.
+
+**Verify**: no `npm pack` artifact actually published; the dry-run pack is cleaned up. After fixing the exports map, the same Tier 7 passes.
+
+### S39 — `/smoke-test` catches a tarball that imports but throws on invoke (v0.19.0)
+
+**Setup**: a repo where `dist/index.js` references `process.env.SOME_BUILD_TIME_VAR` at module-load. The variable is set during build but isn't substituted at publish time — so the tarball "imports cleanly" but every public function throws `Cannot read property 'foo' of undefined`.
+
+**Trigger**: `/solo-npm:verify` Tier 8 or *"smoke test before publish"*.
+
+**Expected**:
+- `/smoke-test` packs the tarball; creates a temp fixture directory; `npm init -y`; `npm install <tarball>`; generates a smoke `.mjs` that imports + invokes every entry in `package.json#exports`.
+- Import succeeds (the bug is at invoke time).
+- The first invoke throws. Smoke script captures the stderr and exits non-zero.
+- HARD STOPs: *"❌ SMOKE TEST FAILED on `<pkg>.main()`: <verbatim stack>. The tarball imports but doesn't actually work for consumers. Likely cause: build-time env var substitution missed at publish."*
+- Temp fixture cleaned up (EXIT trap).
+
+**Verify**: `git tag --list` unchanged. `/tmp/solo-npm-smoke-*` directory removed. After fixing the build, the same Tier 8 passes.
+
+### S40 — `/provenance-verify` confirms post-publish SLSA attestation (v0.19.0)
+
+**Setup**: a release just shipped via `/release` Phase C.7. `npm view <pkg>@<v> dist.attestations` returns the attestation set.
+
+**Trigger**: `/solo-npm:provenance-verify` (typically auto-chained from `/release` C.7.7) or *"verify provenance"*.
+
+**Expected**:
+- Wraps `npm-trust --verify-provenance --json --package <pkg> --version <v>`.
+- The wrapped CLI fetches the registry's signed attestation, verifies the SLSA signature against the Sigstore transparency log, and validates the predicate (`buildType`, `builder.id`, GitHub run URL).
+- All checks green → renders a concise success summary: *"✓ provenance verified for `<pkg>@<v>` — built by `https://github.com/<owner>/<repo>/actions/runs/<id>` at `<timestamp>`."*
+- Non-fatal warn if a sub-check (e.g., `builder.id` matches `github-actions` but the run URL is unreachable) doesn't block.
+
+**Verify**: exit code 0. The user has audit-trail confidence the just-published version is genuinely from CI, not a local impostor.
+
+### S41 — `/supply-chain` surfaces a high-risk transitive dep (v0.19.0)
+
+**Setup**: a repo with a runtime dep that pulls in a transitive package with `lastModified < 7 days`, `maintainerCount == 1`, and `provenance: false` on its latest version.
+
+**Trigger**: *"deep audit"* or `/solo-npm:supply-chain`.
+
+**Expected**:
+- Read-only; no mutations.
+- Builds a flat list of transitive deps from the lockfile.
+- For each dep: fetch deps.dev metadata (license, maintainerCount, lastModified, provenance presence, typosquat-similarity score against top-1000 packages).
+- Per-dep risk score (0–100); top 5 surfaced.
+- The newly-introduced dep scores high on age-risk (recent) + bus-factor risk (1 maintainer) + provenance-missing.
+- Renders the risk table; suggests `--exclude` / pin-to-known-good as remediation. Does NOT chain to `/deps` automatically (the call is semantic).
+
+**Verify**: re-run with the suspicious dep's version pinned to a previous known-good version returns no high-risk rows.
+
+### S42 — `/lockfile-audit` flags an integrity-hash-only change (v0.19.0)
+
+**Setup**: a `pnpm-lock.yaml` diff in an open PR where one package's `integrity:` hash changed but its `version:` did not. (Force-push attack signature — same version, different content.)
+
+**Trigger**: *"is this lockfile safe?"* or `/solo-npm:lockfile-audit --base HEAD~1`.
+
+**Expected**:
+- Diffs current lockfile against base.
+- Categorizes changes: additions / removals / version bumps / **integrity-hash-only**.
+- The integrity-hash-only change is the suspicious category. Surfaces it with full context: *"⚠ SUSPICIOUS: `<pkg>@<v>` integrity hash changed without version change. This pattern is the force-push attack signature. Compare hashes: <before> → <after>. Verify against npm registry: `npm view <pkg>@<v> dist.integrity`."*
+- Also flags orphan transitive additions and version downgrades.
+
+**Verify**: re-running on a non-suspicious lockfile diff returns clean.
+
+### S43 — `/secrets-audit` finds a planted token and masks the output (v0.19.0)
+
+**Setup**: a repo with a deliberately planted dummy npm token in `src/legacy.ts` (`npm_FAKEDUMMY123ABCDEF456789...`) — committed two commits ago.
+
+**Trigger**: *"scan for secrets"* or `/solo-npm:secrets-audit`.
+
+**Expected**:
+- Wraps `gitleaks detect --no-banner --report-format json --report-path -`.
+- gitleaks finds the dummy token; surfaces the rule (`npm-access-token`), the file path, the line number.
+- **Output is masked**: never echoes the literal token value (per the H1 destructive-output convention). Renders as `npm_FAK…CDEF` or similar `<prefix>…<suffix>` form.
+- Renders remediation: *"1. Rotate the token at the source. 2. Use `git filter-repo` (or BFG) to scrub history. 3. Force-push the cleaned branch. 4. Notify any maintainers who fetched the leaked SHA."*
+
+**Verify**: stdout/stderr search for the verbatim token returns no matches. The remediation block is concrete (no "rotate your secrets" hand-wave).
+
+### S44 — `/workspace remove` two-step destructive confirmation (v0.19.0)
+
+**Setup**: a monorepo with three published packages. The maintainer wants to drop the middle one (`@scope/foo`).
+
+**Trigger**: *"remove @scope/foo from the monorepo"*
+
+**Expected**:
+- Phase 0 extracts `PKG=@scope/foo`.
+- Phase 0.5 regex + Phase 0.5b shell-safety pass.
+- Phase A pre-flight: confirms the workspace package exists; checks for in-tree dependents (rejects if any local consumer still imports it).
+- Phase B renders the destructive plan: *"This will (1) `/solo-npm:deprecate` all published versions of @scope/foo with message 'Package removed from monorepo'; (2) optionally `/solo-npm:unpublish` versions still within the 72h window; (3) `rm -rf packages/foo`; (4) update CHANGELOG.md."*
+- **First AskUserQuestion**: *Proceed (Recommended deprecate-only) / Proceed (deprecate + unpublish within 72h) / Abort*.
+- On Proceed, **second AskUserQuestion** (per H1 destructive convention): *"Final confirmation. Type `delete @scope/foo` to confirm." / Abort*.
+- On confirmed: chains to `/deprecate`, optionally `/unpublish`, fs removal, CHANGELOG append.
+
+**Verify**: `npm view @scope/foo deprecated` shows the message. `ls packages/` no longer contains `foo`. `CHANGELOG.md` has a new "## v<next>" entry mentioning the removal.
+
+### S45 — `/release --changed-only` ships only changed monorepo packages (v0.19.0)
+
+**Setup**: a monorepo with `pkg-a`, `pkg-b`, `pkg-c`. Only `pkg-b` has commits since its last tag (`pkg-b-v1.2.0`).
+
+**Trigger**: *"release just the changed packages"* or `/solo-npm:release --changed-only`.
+
+**Expected**:
+- Phase A.0 (new in v0.19.0): walks all workspace packages; for each, looks up the last per-package tag (`<pkg-name>-v<version>`); runs `git log <last-tag>..HEAD -- <pkg-path>`; classifies as changed/unchanged.
+- Only `pkg-b` flagged as changed.
+- Phase B renders the plan: *"Release plan: pkg-b → 1.2.1 (1 changed package; 2 unchanged: pkg-a, pkg-c)."*
+- One AskUserQuestion approves.
+- Phase C tags `pkg-b-v1.2.1` (per-package tag form, not unified `vX.Y.Z`).
+- CI's tag-trigger filter matches `pkg-b-v*` and publishes only `pkg-b`.
+
+**Verify**: `git tag --list` has `pkg-b-v1.2.1` added; `pkg-a-v*` and `pkg-c-v*` unchanged. `npm view @scope/pkg-b@1.2.1 version` returns `1.2.1`; `npm view @scope/pkg-a` and `@scope/pkg-c` show no new version.
+
+### S46 — `/bundle-analyze` breakdown matches `npm pack --json` (v0.19.0)
+
+**Setup**: a repo with a typical build (`dist/` ~ 80 KB across ~12 files, including one large vendor file).
+
+**Trigger**: *"what's in my tarball?"* or `/solo-npm:bundle-analyze`.
+
+**Expected**:
+- Read-only; no mutations.
+- Runs `npm pack --json --dry-run`; parses the file list with sizes.
+- Renders a top-N table (default 10): file path | size | % of total.
+- If a bundler metafile is present (`dist/meta.json` from esbuild, `stats.json` from webpack, etc.), enriches the table with bundled-vs-externalized origin.
+- If the cached `state.json#pkgCheck.lastSize["<pkg>@<prev-v>"]` is present, renders a delta column: *"+12 KB vs `<pkg>@<prev-v>`"*.
+
+**Verify**: the sum of the per-file size column equals `npm pack --json` total tarball size to the byte.
+
+### S47 — `/migrate` is idempotent on state.json v1 → v2 → v3 (v0.19.0)
+
+**Setup**: a consumer repo with `.solo-npm/state.json` written by a pre-v0.16.0 skill — schema v1 (no `trust.workflowFileHash`, no `pkgCheck`, no `toolchain`).
+
+**Trigger**: *"upgrade my solo-npm setup"* or `/solo-npm:migrate`.
+
+**Expected**:
+- Phase 0 reads `state.json#schemaVersion` (treats missing as 1).
+- Phase A enumerates pending migrations: v1 → v2 (adds `trust.workflowFileHash`), v2 → v3 (adds `pkgCheck` + `toolchain`).
+- Renders the plan; one AskUserQuestion: *Apply migrations (Recommended) / Abort*.
+- Phase B applies migrations in order; each is atomic write per H7 (`state.json.tmp` + rename).
+- Phase C re-runs the migration enumerator to confirm `schemaVersion == 3` and idempotency: re-running `/migrate` immediately is a no-op.
+- Also detects pin-convention drift (skill bodies that pin `npm-trust@^X` instead of `@latest` per v0.18.0) — surfaces but doesn't auto-fix (skill bodies are part of the plugin, not the consumer).
+
+**Verify**: `.solo-npm/state.json#schemaVersion == 3`. Re-running `/migrate` immediately exits with *"All migrations applied; state is current."*. No atomic-write `.tmp` artifacts left in `.solo-npm/`.
+
+### S48 — `/opt-in prepare-dist` + `/toolchain` cache refresh (v0.19.0)
+
+**Setup**: a repo with `release.yml` scaffolded but no `gagle/prepare-dist@v1` action step. The maintainer wants to adopt the dist-translation step (e.g., for a monorepo that publishes flattened from `dist/`).
+
+**Trigger 1**: *"opt in to prepare-dist"* or `/solo-npm:opt-in prepare-dist`.
+
+**Expected 1**:
+- Phase A confirms the feature is in the narrowed v0.19.0 opt-in set (`prepare-dist` + `capabilities-protocol` only — build-time and project-meta opt-ins are out of scope).
+- Phase B chains into `/init --refresh-yml` with the `--with-prepare-dist` variant.
+- The refreshed `release.yml` now includes the `gagle/prepare-dist@v1` step between build and publish.
+- `package.json#scripts.prepare-dist` or `devDependencies.prepare-dist` added if missing.
+
+**Trigger 2**: *"refresh the toolchain cache"* or `/solo-npm:toolchain --refresh`.
+
+**Expected 2**:
+- Re-probes `npx -y npm-trust@latest --capabilities --json` and `npx -y prepare-dist@latest --capabilities --json`.
+- Writes the descriptors to `state.json#toolchain` with a fresh `cachedAt` timestamp (TTL 1 day).
+- Renders the cached feature set: *"npm-trust@<v> features: doctor, validate-only, verify-provenance, with-prepare-dist, list, configure. prepare-dist@<v> features: emit-dist, --json, --capabilities."*
+
+**Verify**: `release.yml` contains the `prepare-dist@v1` step; `state.json#toolchain.cachedAt` is fresh. Next `/release` run skips the resolve hop because the cache hits.
+
+### S49 — `/explain` synthesizes a failed CI run into actionable next steps (v0.19.0)
+
+**Setup**: a release CI run failed at the publish step because `npm-trust --doctor` reports trust isn't configured (e.g., the consumer ran `/release` before completing `/solo-npm:trust`).
+
+**Trigger**: *"why did the last CI fail?"* or `/solo-npm:explain`.
+
+**Expected**:
+- Phase A wraps `gh run list --workflow=release.yml --limit 1 --json conclusion,databaseId`; picks the most recent failed run.
+- Phase B `gh run view <id> --log-failed` fetches the failing step's log.
+- Phase C: AI synthesis. Recognizes the npm-trust error signature; classifies as `TRUST_NOT_CONFIGURED`.
+- Renders a plain-English explanation + concrete remediation: *"The release CI failed because OIDC trust is not configured for this package. Run `/solo-npm:trust` locally; complete the npm web 2FA prompt; re-push the tag with `git push origin :refs/tags/v<v> && git tag -d v<v>` then re-run `/release`."*
+- Does NOT auto-chain to `/trust` (the call is semantic — the user should understand the failure before fixing).
+
+**Verify**: the synthesized explanation matches the actual failure mode. After running `/trust`, a re-pushed tag triggers a CI run that succeeds.
+
 ## Drift indicators to watch
 
 When walking through these scenarios, **suspect drift** if you see:

@@ -32,7 +32,7 @@ On first folder trust, you'll see two prompts:
 1. *Install marketplace `gllamas-skills`?* → **Yes**
 2. *Install plugin `solo-npm@gllamas-skills`?* → **Yes**
 
-After accepting, all seven `/solo-npm:*` invocations resolve.
+After accepting, the `/solo-npm:*` invocations resolve.
 
 If you skip the prompts, you can install manually any time:
 
@@ -50,8 +50,10 @@ If you skip the prompts, you can install manually any time:
 Phase 1 scaffolds:
 
 - `.github/workflows/release.yml` (public OIDC or private token, depending on your registry config)
-- `package.json` updates (`engines.node`, `publishConfig`, `npm-trust:setup` script)
+- `package.json` updates (`engines.node`, `publishConfig`)
 - `.nvmrc`
+- `.claude/settings.json` (marketplace + plugin pins, plus the solo-npm permission allowlist)
+- `.solo-npm/state.json` (empty cache scaffold)
 - `.claude/skills/release/SKILL.md` (thin wrapper, workspace-shape-aware)
 - `.claude/skills/verify/SKILL.md` (thin wrapper)
 
@@ -77,15 +79,20 @@ init and just configure OIDC trust:
 
 The trust skill handles authentication, dry-run validation, per-package
 configuration, and verification. Uses the
-[`npm-trust`](https://github.com/gagle/npm-trust) CLI under the hood —
-install it as a devDep for fast invocation:
+[`npm-trust`](https://github.com/gagle/npm-trust) CLI under the hood,
+resolved at `@latest` via `npx -y` (per the v0.18.0 capability-probe
+convention — no version pins in skill bodies).
+
+Optionally add it as a devDep for faster invocation (skips the
+`npx -y` resolve hop):
 
 ```bash
 pnpm add -D npm-trust
 ```
 
-(Optional — the skill falls back to `npx -y npm-trust@latest` if the
-CLI isn't a devDep.)
+Pinning a specific major locally is not recommended — the runtime
+`--capabilities --json` probe is the safety net that catches a
+genuinely incompatible upstream release before any side effect.
 
 ## 5. Customize the consumer wrappers
 

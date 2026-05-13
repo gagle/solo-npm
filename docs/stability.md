@@ -1,6 +1,6 @@
 # Stability roadmap — toward v1.0.0
 
-> Status: solo-npm is in **v0.x experimental** but **code-side complete** as of v0.13.0 and **docs-aligned** as of v0.14.0; v0.15.0 added project-level `CLAUDE.md`, outreach-templates artifact, and minor regression/prompts drift fixes. This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
+> Status: solo-npm is in **v0.x experimental** but **mission-narrowed to the publish/release lifecycle as of v0.19.0** (PART III scope: 16 new skills landed in one cut — `doctor`, `types`, `public-api`, `exports-check`, `smoke-test`, `provenance-verify`, `supply-chain`, `lockfile-audit`, `secrets-audit`, `workspace`, `bundle-analyze`, `migrate`, `opt-in`, `explain`, `toolchain` — plus the `/release --changed-only` monorepo mode). **Docs aligned as of v0.19.1.** This document describes what **v1.0.0 will commit to** when the stability declaration ships. Until then, every minor release (`v0.X.0`) may break consumer wrappers — though we try not to.
 
 ## Why this doc exists
 
@@ -61,11 +61,11 @@ These are explicit non-promises so consumers don't accidentally depend on them:
 
 ## What needs to land before v1.0.0
 
-**Code-side: complete** as of v0.13.0. **Docs alignment: complete** as of v0.14.0. No new code or docs work is required; everything from here is one validation run + outreach.
+**Code-side: complete** as of v0.19.0 (PART III narrowing). **Docs alignment: complete** as of v0.19.1. No new code or docs work is required; everything from here is one validation run + outreach.
 
 | Item | Type | Owner |
 |---|---|---|
-| Run the regression checklist (S1–S33) end-to-end at least once | Validation | Maintainer |
+| Run the regression checklist (S1–S49) end-to-end at least once on a real consumer, including the new release-gates (`/public-api` hard gate in `/release` Phase A.2b; `/types` + `/exports-check` + `/smoke-test` in `/verify` Tiers 5–8) | Validation | Maintainer |
 | Wider adoption signal — at least one external user beyond the maintainer's portfolio | External | Outreach |
 | Skill-spec drift caught once via the regression checklist before being noticed in production | Temporal | Time + release cycles |
 

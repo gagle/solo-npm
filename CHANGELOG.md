@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.19.1 — Docs alignment with v0.19.0 reality
+
+Doc-only patch. No skill behavior changes.
+
+### Changed
+
+- `docs/stability.md` — status banner reflects v0.19.0 mega-release + PART III narrowing; v1.0.0 punch-list Item 1 reframed for the larger regression surface (S1–S49 + new release-gates).
+- `docs/outreach.md` — elevator pitch + Show HN + r/node + awesome-claude-code + v1.0.0 announcement templates rewritten around the v0.19.0 narrowed scope (the AI release wizard for TypeScript npm packages). `/public-api` framed as the unique differentiator vs semantic-release / changesets. Stale "13 skills" references removed across all templates. Timeline extended through v0.19.1.
+- `docs/install.md` — stale "seven /solo-npm:* invocations" claim dropped; `/init` scaffold list aligned with current skill body (no `npm-trust:setup` script; `.claude/settings.json` + `.solo-npm/state.json` added); npm-trust devDep wording aligned with the v0.18.0 `@latest` + capability-probe convention.
+- `docs/regression.md` — added S34–S49 covering the 16 new v0.19.0 skills: `/doctor` (S34) + `/doctor --fix` (S35), `/public-api` HARD GATE (S36), `/types` (S37), `/exports-check` (S38), `/smoke-test` (S39), `/provenance-verify` (S40), `/supply-chain` (S41), `/lockfile-audit` (S42), `/secrets-audit` (S43), `/workspace remove` (S44), `/release --changed-only` (S45), `/bundle-analyze` (S46), `/migrate` idempotency (S47), `/opt-in` + `/toolchain` refresh (S48), `/explain` (S49).
+- `docs/prompts.md` — added trigger-prompt sections for the 15 new skills in workflow-based ordering (repo-ops near `/init`; verify-gates near `/verify`; health near `/status`; security-gates near `/audit`; monorepo near `/owner`); added `--changed-only` row to the existing `/release` section.
+- `README.md` — "Hardening + stability" section "code-side complete as of v0.13.0" updated to v0.19.0 (PART III narrowing); "npm coverage" section dangling pointer to deleted `docs/npm-coverage.md` removed; replaced with prose covering the release-gate skills that don't map to npm CLI commands.
+
+### Removed
+
+- `docs/npm-coverage.md` — the gap analysis that drove `/dist-tag` + `/deprecate` + `/owner` in v0.6.0–v0.7.0 no longer reflects v0.19.0 scope and risked misleading first-time readers. The historical "why" lives in CHANGELOG entries for v0.6.0–v0.7.0.
+
+### Migration
+
+None required. Pure doc patch — consumer wrappers and skill behavior unchanged.
+
 ## v0.19.0 — Mega-release: 16 new skills + narrowed scope to publish/release lifecycle
 
 This is the largest single solo-npm release to date. PART III of the strategic roadmap ([plans](https://github.com/gagle/solo-npm)) lands in one cohesive cut, narrowing solo-npm's mission to **the AI-driven release wizard for TypeScript npm packages** — everything orbits around `npm publish`/release.

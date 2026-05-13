@@ -100,7 +100,9 @@ solo-npm wraps the npm commands a solo-dev publisher actually runs. Honest about
 | `npm hook`, `npm org`, `npm team` | (manual) | non-goal — not solo-dev |
 | `npm sbom` | (manual `npm sbom`) | defer — niche compliance |
 
-For the deeper analysis of how this maps to npm's full surface area (and the rationale behind the non-goals), see [`docs/npm-coverage.md`](./docs/npm-coverage.md).
+As of v0.19.0 the scope is narrowed: solo-npm orchestrates the publish/release lifecycle for TypeScript npm packages. Build-tool choices, daily-dev hygiene, doc generation, and config presets are explicit non-goals — they belong in project-build tooling, not the release wizard.
+
+The release lifecycle also pulls in **gates that aren't npm CLI commands at all**: `/solo-npm:public-api` (public-API surface diff vs last release), `/solo-npm:types` (arethetypeswrong against the packed tarball), `/solo-npm:exports-check` (orphan exports map), `/solo-npm:smoke-test` (tarball pack-install-invoke), `/solo-npm:provenance-verify` (post-publish SLSA attestation check), `/solo-npm:supply-chain` / `/solo-npm:lockfile-audit` / `/solo-npm:secrets-audit` (security gates beyond CVEs), and `/solo-npm:doctor` (5-domain publish-health probe).
 
 > **Heads-up on auth**: `dist-tag`, `deprecate`, and `owner` mutations require a local `npm login` session — OIDC Trusted Publishing only covers `npm publish`. The skills surface a foolproof `npm login` handoff if you're not authenticated locally.
 
@@ -108,7 +110,7 @@ For the deeper analysis of how this maps to npm's full surface area (and the rat
 
 ## Hardening + stability
 
-solo-npm is **code-side complete** as of v0.13.0 — the v1.0.0 entry criteria for the skill set itself are met. Five major hardening passes shipped between v0.10.1 and v0.13.0; what follows are the user-visible behaviors that came out of them. Most users won't notice anything different (the happy path works the same); these are surfaces you'll see when something goes wrong:
+solo-npm is **code-side complete** as of v0.19.0 (PART III narrowing — 16 new skills landed). Five major hardening passes shipped between v0.10.1 and v0.13.0 (Tier-1 through Tier-4 strict-safety); the release-gate skill set (`/public-api`, `/types`, `/exports-check`, `/smoke-test`, `/doctor`, supply-chain triad) landed in v0.19.0. What follows are the user-visible behaviors. Most users won't notice anything different (the happy path works the same); these are surfaces you'll see when something goes wrong:
 
 - **New STOP classes**: detached HEAD, running inside a `git worktree`, unsynced submodules, malformed extracted prompt slots (Phase 0.5 regex), shell metacharacters in extracted slots (Phase 0.5b), CRLF in published bin scripts. Each surfaces with concrete remediation.
 - **Tag-collision pre-flight** in `/release` C.5 (catches tag-already-exists on origin BEFORE creating the local tag — fixes the post-`/unpublish` re-release case).

@@ -19,6 +19,30 @@ Scenario: just `git init`'d a new package and wrote some code.
 | *"Add the OIDC release workflow"* | Init scaffolds release.yml + publishConfig + .nvmrc + consumer wrappers. |
 | *"I just `npm init`'d this — wire it up for solo-npm releases"* | Claude reads context (just-created package.json, no release.yml), invokes `/solo-npm:init`. |
 
+### `/solo-npm:migrate` — bring an existing solo-npm repo up to current
+
+Scenario: a repo that adopted solo-npm at an earlier version and has accumulated convention drift (state.json schema, pin convention, release.yml shape).
+
+| Prompt | What happens |
+|---|---|
+| *"Upgrade my solo-npm setup"* / *"Bring this repo up to current"* | Reads `state.json#schemaVersion`; enumerates pending migrations (v1→v2→v3); one AskUserQuestion gate; applies in order. |
+| *"Migrate state.json to the new schema"* | Direct match. Each migration is an atomic write per H7. |
+| *"Fix conventions drift"* | Detects pin-convention drift (`npm-trust@^X` → `@latest` per v0.18.0) and release.yml drift; chains into `/init --refresh-yml` if needed. |
+| *"My state.json is from an older version of solo-npm"* | Idempotent — safe to re-run on already-migrated repos. |
+
+### `/solo-npm:opt-in` — adopt a publish-related convention
+
+Scenario: an existing repo wants to opt in to `prepare-dist` (publish-from-dist transform) or `capabilities-protocol` (only for repos that themselves expose a CLI).
+
+| Prompt | What happens |
+|---|---|
+| *"Opt in to prepare-dist"* | Chains into `/init --refresh-yml --with-prepare-dist`. Adds the `gagle/prepare-dist@v1` action step + devDep. |
+| *"Adopt the prepare-dist transform"* | Same. |
+| *"Enable the capabilities probe for my CLI"* | Scaffolds a `--capabilities --json` handler for repos that expose their own CLI (e.g., npm-trust, prepare-dist consumers). |
+| *"Set up the capabilities protocol"* | Same. |
+
+Note: build-time + project-meta opt-ins (commitlint, husky, lint-staged, eslint preset, tsconfig base, dependabot, branch-protection) are out of scope per the v0.19.0 narrowed mission.
+
 ### `/solo-npm:trust` — configure OIDC trust
 
 Scenario: first publish landed, ready for Trusted Publishing. Or new package added to a monorepo.
@@ -43,6 +67,7 @@ Scenario: time to ship. After v0.5.4, `/release` auto-routes to `/solo-npm:prere
 | *"Bump the beta counter and ship"* (when on `1.6.0-beta.1`) | `/release` detects pre-release → auto-chains to `/solo-npm:prerelease` → user picks Bump. |
 | *"I'm done, push it out"* | Matches stable release flow. |
 | *"Get this on npm"* | Same. |
+| *"Release just the changed packages"* / *"Ship only what's changed since the last tag"* | Monorepo `--changed-only` mode (v0.19.0+). Walks workspace packages; releases only those with commits since their last per-package tag. |
 
 ### `/solo-npm:verify` — quality gates
 
@@ -55,6 +80,72 @@ Scenario: mid-development, want to confirm nothing's broken.
 | *"Run all the tests"* | Verify covers test as one of its steps. |
 | *"Quick sanity check"* | Could match verify or status; verify wins (it's about confirming nothing's broken). |
 | *"Did `pnpm test` pass?"* | Claude infers verify is the right wrapper. |
+
+### `/solo-npm:types` — arethetypeswrong (attw) against the packed tarball
+
+Scenario: dual-package repo, refactor that touched `types`/`exports` fields, want to catch the bugs publint misses.
+
+| Prompt | What happens |
+|---|---|
+| *"Check types"* / *"Are the types wrong?"* | Packs the tarball; runs `attw --pack`. HARD STOPs on any error severity. |
+| *"Verify dual-package resolution"* | Same — attw is the canonical tool for ESM/CJS boundary checks. |
+| *"Run attw"* | Direct invocation. |
+| *"Did I break consumer types?"* | Auto-invoked as `/verify` Tier 5; surfaces NoResolution / FallbackCondition / etc. |
+
+### `/solo-npm:exports-check` — `package.json#exports` orphan detection
+
+Scenario: refactor renamed a file in `dist/`, forgot to update the exports map.
+
+| Prompt | What happens |
+|---|---|
+| *"Check exports"* / *"Validate package.json exports"* | Runs `npm pack --dry-run`; cross-references exports paths against tarball files. |
+| *"Are my exports correct?"* | Same. Reports orphans (referenced but missing) and unreferenced files. |
+| *"Exports orphans"* | Direct term-match. |
+| *"Make sure I'm not shipping a broken exports map"* | Auto-invoked as `/verify` Tier 7. |
+
+### `/solo-npm:smoke-test` — pre-publish tarball pack-install-invoke
+
+Scenario: catches the bug class no other check catches — "the published tarball imports cleanly but doesn't actually work".
+
+| Prompt | What happens |
+|---|---|
+| *"Smoke test before publish"* | Packs the tarball; installs into a temp fixture; imports + invokes every public export. |
+| *"Test the tarball"* | Same. |
+| *"Does the package actually work?"* | The most common phrasing of this concern. |
+| *"Pre-publish sanity check"* | Auto-invoked as `/verify` Tier 8. |
+
+### `/solo-npm:public-api` — public-API surface diff vs last release
+
+Scenario: refactor changed an exported function's signature, removed a type, or renamed a public symbol. Want to know if your version bump matches the diff.
+
+| Prompt | What happens |
+|---|---|
+| *"Check API surface"* / *"Did I break consumers?"* | Extracts current `dist/` surface; diffs against the tarball published at the last release; classifies patch/minor/major. |
+| *"Validate version bump"* | Auto-invoked as `/release` Phase A.2b HARD GATE. STOPs if requested bump < diff classification. |
+| *"What changed publicly?"* | Renders the diff summary. |
+| *"API diff vs last release"* | Same — explicit invocation outside `/release`. |
+
+### `/solo-npm:provenance-verify` — post-publish SLSA attestation check
+
+Scenario: just shipped; want to confirm the registry's signed attestation is valid (not a local impostor).
+
+| Prompt | What happens |
+|---|---|
+| *"Verify provenance"* | Wraps `npm-trust --verify-provenance --json`. Validates the SLSA signature against Sigstore. |
+| *"Check the published version's attestations"* | Same. |
+| *"Did provenance work?"* | Direct match. |
+| *"Confirm the SLSA signature"* | Same. Auto-chained from `/release` Phase C.7.7. |
+
+### `/solo-npm:bundle-analyze` — tarball composition breakdown
+
+Scenario: tarball is growing; want to know which files are the largest, what's bundled vs externalized.
+
+| Prompt | What happens |
+|---|---|
+| *"What's in my tarball?"* | Top-N file size table; bundled-vs-externalized split if a bundler metafile is present. |
+| *"Bundle composition"* | Same. |
+| *"Why is my package so big?"* | Top contributors surfaced first; delta column vs last published version if cached. |
+| *"Size breakdown by file"* | Direct match. Read-only. |
 
 ### `/solo-npm:status` — portfolio dashboard
 
@@ -70,6 +161,40 @@ Scenario: morning coffee, checking on packages.
 | *"Trust state across my packages"* | Reads `.solo-npm/state.json` cache. |
 | *"What's open in GitHub for my packages?"* | gh repo issues column. |
 
+### `/solo-npm:doctor` — read-only publish health probe across 5 domains
+
+Scenario: cold check on a repo, pre-release dry-run, or to see what `/doctor --fix` would do without committing.
+
+| Prompt | What happens |
+|---|---|
+| *"Is my repo healthy?"* | Probes trust + provenance + config-publish + security-gate + publish-readiness; renders a `DoctorReport`. |
+| *"Diagnose the repo"* / *"What's wrong with this setup?"* | Same. |
+| *"Publish health check"* | Direct match. |
+| *"Show me the publish-side issues"* | Same. |
+| *"Diagnose and fix what you can"* | `--fix` mode — auto-chains into safe remediation skills (`/init`, `/trust`, `/migrate`); surfaces non-safe ones with the exact remediation command. |
+
+### `/solo-npm:toolchain` — surface cached `--capabilities` descriptors
+
+Scenario: want to confirm the installed tools (`npm-trust`, `prepare-dist`) expose the features the skills depend on, or force a refresh after upgrading a tool.
+
+| Prompt | What happens |
+|---|---|
+| *"What tools does solo-npm see?"* | Reads `state.json#toolchain`; renders the cached feature set. |
+| *"Show capabilities"* / *"List installed solo tools"* | Same. |
+| *"Which features does my npm-trust expose?"* | Per-tool feature list (doctor, validate-only, verify-provenance, with-prepare-dist, list, configure, …). |
+| *"Refresh the toolchain cache"* | `--refresh` — re-probes both tools at `@latest`; writes a fresh `cachedAt`. |
+
+### `/solo-npm:explain` — diagnose a failed release CI run
+
+Scenario: CI just failed; want a plain-English explanation + actionable next steps instead of scrolling through `gh run view --log`.
+
+| Prompt | What happens |
+|---|---|
+| *"Explain the CI failure"* / *"Why did the release CI fail?"* | Fetches `gh run view --log-failed`; AI-synthesizes the failure mode + remediation. |
+| *"What's wrong with the last gh run?"* | Same. |
+| *"Diagnose the failed release"* | Suggests remediation as a concrete `/solo-npm:*` invocation. |
+| *"My CI is red — what now?"* | Same. Does NOT auto-chain to the remediation skill — the call is semantic. |
+
 ### `/solo-npm:audit` — security audit with risk triage
 
 Scenario: a CVE just hit Twitter, or it's monthly maintenance day.
@@ -82,6 +207,39 @@ Scenario: a CVE just hit Twitter, or it's monthly maintenance day.
 | *"I saw a CVE for tar-fs — am I affected?"* | Audit lists per-advisory, includes tar-fs if vulnerable. |
 | *"Run a security check before release"* | Invoked pre-release as sanity. |
 | *"Anything urgent in my deps?"* | Tier 1 entries surface first. |
+
+### `/solo-npm:supply-chain` — deep supply-chain audit beyond CVEs
+
+Scenario: quarterly review, or before adopting a new transitive dep with low maintainer count / recent first publish.
+
+| Prompt | What happens |
+|---|---|
+| *"Supply chain audit"* / *"Deep audit"* | Per-transitive-dep risk score: provenance presence, license, age, maintainer count, typosquat similarity. |
+| *"Check deps risk"* | Same. |
+| *"License audit"* | License compatibility surface (incompatible licenses flagged for the workspace license). |
+| *"Are my deps trustworthy?"* | Renders the top-N risky deps table. |
+
+### `/solo-npm:lockfile-audit` — suspicious lockfile diff detection
+
+Scenario: PR review aid; defensive against supply-chain attacks where malicious deps slip in via PR.
+
+| Prompt | What happens |
+|---|---|
+| *"Audit lockfile diff"* | Diffs current lockfile against base; categorizes (additions / removals / version bumps / integrity-hash-only). |
+| *"Is this lockfile safe?"* | Same. Surfaces integrity-hash-only changes (force-push attack signature). |
+| *"Check for suspicious dep changes"* | Direct match. |
+| *"Lockfile review"* | Use as a release-gate or PR review aid. |
+
+### `/solo-npm:secrets-audit` — gitleaks wrapper for committed-secret detection
+
+Scenario: pre-release, or after a near-miss event ("did I just commit a token?").
+
+| Prompt | What happens |
+|---|---|
+| *"Scan for secrets"* / *"Gitleaks check"* | Wraps `gitleaks detect`; surfaces findings with masked tokens (never echoes the literal value). |
+| *"Did I commit a token?"* | Same. |
+| *"Secret leak audit"* | Direct term-match. |
+| *"Did anything sensitive end up in git history?"* | Scans full history, not just the working tree. |
 
 ### `/solo-npm:deps` — dep upgrade orchestrator
 
@@ -159,6 +317,19 @@ Scenario: bus-factor mitigation, ownership transfer, audit.
 | *"Audit ownership across portfolio"* | Same as above. |
 | *"Remove @old-collaborator from @ncbijs/eutils"* | Single-package rm; rejects sole-owner removal. |
 | *"Who has publish access to npm-trust?"* | Single-package owner list. |
+
+### `/solo-npm:workspace` — remove a workspace package from a monorepo
+
+Scenario: a monorepo package is no longer needed; want to deprecate published versions, optionally unpublish recent ones, drop the filesystem directory, and CHANGELOG the removal.
+
+| Prompt | What happens |
+|---|---|
+| *"Remove the foo package"* / *"Drop @scope/foo from the monorepo"* | Chains `/deprecate` + optional `/unpublish` + `rm -rf packages/foo` + CHANGELOG. Two-step destructive confirmation per H1. |
+| *"Delete a workspace package"* | Same. |
+| *"Unpublish and remove a package"* | Same. |
+| *"Drop the @scope/legacy package"* | Same. Rejects if in-tree dependents still import it. |
+
+Only the `remove` operation is implemented today; `add` and `deps` are deferred per the v0.19.0 narrowed scope.
 
 ### `/solo-npm:unpublish` — destructive recovery (wrong name, rename, secrets emergency)
 
